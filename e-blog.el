@@ -22,16 +22,16 @@
 ;;; TODO: update commentary before 0.2 release.
 ;;; Commentary:
 
-;; e-blog allows you to post to a single blog on Blogger.  There is not
-;; yet support for selecting which blog to post to, if you have several.
-;; It will post to the last blog in the metafeed returned by the blogger
-;; service.  You must have curl installed and in your PATH to use e-blog
+;; e-blog allows you to post to one or more blogs on Blogger.  You
+;; must have curl <http://curl.haxx.se> to use e-blog.
 
-;; To use e-blog:
-;;   change e-blog-template to reflect the path to e-blog-template.xml, below
-;;   (load-file "path-to-e-blog/e-blog.el")
-;;   call e-blog-new-post
-;;   C-c C-c from within the post buffer will submit your post
+;; To use e-blog: simply load this file:
+;;    (load-file "/path-to-eblog/e-blog.el")
+;; call e-blog-new-post:
+;;    M-x e-blog-new-post
+;; If necessary, select which blog to post to (if you only have one
+;; blog, this step will not be presented to you).  Do C-c C-c when you
+;; are finished writing your post.
 
 (setq e-blog-name "mblog"
       e-blog-version "0.1"
@@ -230,11 +230,13 @@ post to."
 	(insert-string "\t")
 	(insert-text-button
 	 "+"
-	 'action 'e-blog-list-posts)
+	 'action 'e-blog-list-posts
+	 'face 'custom-state)
 	(insert-string " ")
 	(insert-text-button
 	 (car pair)
-	 'action 'e-blog-set-post-blog)
+	 'action 'e-blog-set-post-blog
+	 'face 'custom-link)
 	(insert-string "\n"))
       (insert-string "\nSelect which blog you would like to post to.")
       (goto-char (point-min))
@@ -244,7 +246,89 @@ post to."
 
 (defun e-blog-list-posts (button)
   "Creates a list containing all of the posts for a given blog."
-  (message "Sorry, listing posts is not yet implemented."))
+  (setq e-blog-post-list ())
+  (let (beg end blog-title blogid tmp-buffer authheader url choose-buffer posts)
+    (setq posts ())
+    (setq choose-buffer (current-buffer))
+    (setq tmp-buffer "*e-blog tmp posts*")
+    (save-excursion
+      (forward-char 2)
+      (setq beg (point))
+      (move-end-of-line nil)
+      (setq end (point))
+      (setq blog-title (buffer-substring-no-properties beg end)))
+    (message blog-title)
+    (save-excursion
+      (delete-char 1)
+      (insert-text-button "-"
+			  'action 'e-blog-collapse-post-list
+			  'face 'custom-state))
+    (dolist (pair e-blog-blogs)
+      (if (equal blog-title (car pair))
+	  (setq e-blog-post-url (nth 1 pair))))
+;;    (message "Setting e-blog-post url to %s." e-blog-post-url)
+    (get-buffer-create tmp-buffer)
+    (set-buffer tmp-buffer)
+    (insert e-blog-post-url)
+    (move-beginning-of-line nil)
+    (search-forward "feeds/")
+    (setq beg (point))
+    (search-forward "/")
+    (setq end (- (point) 1))
+    (setq blogid (buffer-substring beg end))
+    (insert (concat "\nBlog ID is: " blogid "\n"))
+    (setq url 
+	  (concat "http://www.blogger.com/feeds/" blogid "/posts/default"))
+    (insert (concat "URL for posts: " url "\n"))
+    (setq authheader
+	  (concat "Authorization: GoogleLogin auth=" e-blog-auth))
+    (call-process "curl" nil tmp-buffer nil
+		  "--stderr" "/dev/null"
+		  "--header" authheader
+		  url)
+    (move-beginning-of-line 1)
+    (search-forward "<content type='html'>")
+    (search-backward "<title type='text'>")
+    (let (post-title text post-id post sub-posts)
+      (setq sub-posts ())
+      (while (search-forward "<title type='text'>" nil t)
+	(setq beg (point))
+	(search-forward "<")
+	(setq end (- (point) 1))
+	(setq post-title (buffer-substring beg end))
+	(search-forward "<content type='html'>")
+	(setq beg (point))
+	(search-forward "</content>")
+	(setq end (- (point) 10))
+	(setq text (buffer-substring beg end))
+	(search-forward "postID=")
+	(setq beg (point))
+	(search-forward "'")
+	(setq end (- (point) 1))
+	(setq post-id (buffer-substring beg end))
+	(setq post (list post-title blog-title post-id text))
+	(add-to-list 'sub-posts post))
+      (setq posts sub-posts)
+      (setq e-blog-post-list posts))
+    (kill-buffer tmp-buffer)
+    (set-buffer choose-buffer))
+  (move-end-of-line 1)
+  (insert "\n")
+  (dolist (post e-blog-post-list)
+    (insert "\t    * ")
+    (insert-text-button (car post)
+			'action 'e-blog-edit-post
+			'face 'dired-warning
+			'post-info (cdr post))
+    (insert "\n")))
+
+(defun e-blog-edit-post (button)
+  (let (post-info)
+    (setq post-info (button-get button 'post-info))
+    (message "Sorry, editing posts is not yet implemented.")))
+
+(defun e-blog-collapse-post-list (button)
+  (message "Sorry, collapsing lists is not yet implemented."))
 
 (defun e-blog-set-post-blog (button)
   "The callback for the buttons created in
@@ -253,6 +337,7 @@ a blog title in the list contained in `e-blog-blogs' and sets
 `e-blog-post-url' accordingly."
   (message "Will post this article to `%s'."
 	   (button-label button))
+;; TODO: make following dolist loop a defun in it's own right.
   (dolist (pair e-blog-blogs)
     (if (equal (button-label button) (car pair))
 	(setq e-blog-post-url (nth 1 pair))))
