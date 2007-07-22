@@ -33,21 +33,21 @@
 ;;   call e-blog-new-post
 ;;   C-c C-c from within the post buffer will submit your post
 
-;;; TODO: add doc-strings to all functions.
-
 (setq e-blog-name "mblog"
       e-blog-version "0.1"
       e-blog-service "blogger"
       e-blog-get-authinfo-url "https://www.google.com/accounts/ClientLogin"
       e-blog-buffer "*e-blog*"
-      e-blog-template "/home/mikey/emacs/emacs-blogger/e-blog-template.xml"
       e-blog-auth nil)
 
 (defun e-blog-get-credentials ()
+  "Gets username and password via the minibuffer."
   (setq e-blog-user (read-from-minibuffer "Username: ")
 	e-blog-passwd (read-passwd "Password: ")))
 
 (defun e-blog-call-curl ()
+  "Calls curl to request an authorization string for further
+communication with the Gdata API."
   (e-blog-get-credentials)
   (let (switch common user pass source service)
     (setq switch "-d"
@@ -63,6 +63,7 @@
 		  all e-blog-get-authinfo-url)))
 
 (defun e-blog-get-authinfo ()
+  "Extracts the authorization string obtained from Gdata's ClientLogin from e-blog's logging buffer, which has the name `e-blog-buffer'."
   (set-buffer e-blog-buffer)
   (if (search-backward "Auth=" nil t)
       ()
@@ -75,6 +76,10 @@
 	  (buffer-substring start (- (point) 1)))))
 
 (defun e-blog-get-bloglist ()
+  "Calls curl with a request for the metafeed containing all
+blogs for the user `e-blog-user'.  This function uses the
+authorization string obtained with `e-blog-get-authinfo' and
+stored in the variable `e-blog-auth'."
   (set-buffer e-blog-buffer)
   (let (start end address authheader)
     (setq start (point))
@@ -89,6 +94,9 @@
     (setq e-blog-bloglist (buffer-substring start end))))
 
 (defun e-blog-get-post-url ()
+  "Used when there is only one blog available for posting for
+`e-blog-user'.  Extracts the post url for this single blog and
+stores it in `e-blog-post-url'."
   (let (start end)
     (set-buffer e-blog-buffer)
     (search-backward "#post")
@@ -100,6 +108,7 @@
     (setq e-blog-post-url (buffer-substring start end))))
 
 (defun e-blog-setup-post-buffer ()
+  "Creates a buffer for writing a blog post."
   (setq e-blog-post-buffer "*e-blog post*")
   (get-buffer-create e-blog-post-buffer)
   (set-buffer e-blog-post-buffer)
@@ -118,6 +127,8 @@
   (switch-to-buffer e-blog-post-buffer))
 
 (defun e-blog-do-markups ()
+  "Prepends `<p>' to the beginning of each paragraph.  Ends each
+paragraph with `</p>'."
   (interactive)
   (insert-string "<p>")
   (while (search-forward "\n\n" nil t)
@@ -126,6 +137,10 @@
   (insert-string "</p>\n"))
 
 (defun e-blog-post ()
+  "Extracts title and text from `e-blog-post-buffer', substitutes
+necessary information in `e-blog-template', and calls curl to
+send a post to the url `e-blog-post-url' with the resulting xml,
+which is stored in `e-blog-sent-buffer'."
   (interactive)
   (setq e-blog-sent-buffer "*e-blog sent*")
   (let (title text)
@@ -147,7 +162,7 @@
 
     (get-buffer-create e-blog-sent-buffer)
     (set-buffer e-blog-sent-buffer)
-    (insert-file-contents e-blog-template)
+    (insert-string e-blog-post-xml)
     (goto-char (point-min))
     (search-forward "<!-- @@@Title@@@ -->")
     (replace-match title)
@@ -171,6 +186,8 @@
   (kill-buffer e-blog-post-buffer))
 
 (defun e-blog-parse-bloglist (bloglist)
+  "Extracts the titles and post urls for each blog available to
+`e-blog-user', and stores them in `e-blog-blogs'."
   (let (tmp-buffer titles beg end)
     (setq tmp-buffer "*e-blog tmp bloglist*")
     (setq titles ())
@@ -198,6 +215,9 @@
     (kill-buffer tmp-buffer)))
 
 (defun e-blog-setup-choose-buffer ()
+  "Used when `e-blog-user' has more than one blog available for
+posting.  Sets up a buffer that allows choosing which blog to
+post to."
   (let (choose-buffer)
     (setq choose-buffer "*e-blog choose*")
     (get-buffer-create choose-buffer)
@@ -223,9 +243,14 @@
       (setq e-blog-choose-buffer choose-buffer))))
 
 (defun e-blog-list-posts (button)
+  "Creates a list containing all of the posts for a given blog."
   (message "Sorry, listing posts is not yet implemented."))
 
 (defun e-blog-set-post-blog (button)
+  "The callback for the buttons created in
+`e-blog-setup-choose-buffer'.  Finds the post url associated with
+a blog title in the list contained in `e-blog-blogs' and sets
+`e-blog-post-url' accordingly."
   (message "Will post this article to `%s'."
 	   (button-label button))
   (dolist (pair e-blog-blogs)
@@ -235,26 +260,46 @@
   (kill-buffer e-blog-choose-buffer))
 
 (defun e-blog-do-auth ()
+  "Calls the functions necessary for communicating with Gdata."
   (e-blog-call-curl)
   (e-blog-get-authinfo)
   (e-blog-get-bloglist)
   (e-blog-parse-bloglist e-blog-bloglist))
 
 (defun e-blog-single-blog ()
+  "Sets the user up for posting only to a single blog."
   (setq e-blog-post-url (car (car e-blog-blogs)))
   (e-blog-setup-post-buffer))
 
 (defun e-blog-multi-blog ()
+  "Sets the user up for posting to multiple blogs."
   (e-blog-setup-choose-buffer))
 
 (defun e-blog-check-multi ()
+  "Checks whether the user has multiple blogs available for
+posting."
   (if (> (length e-blog-blogs) 1)
       (e-blog-multi-blog)
     (e-blog-single-blog)))
 
 (defun e-blog-new-post ()
+  "Initializes e-blog."
   (interactive)
   (if e-blog-auth
       ()
     (e-blog-do-auth))
   (e-blog-check-multi))
+
+(setq e-blog-post-xml 
+"<entry xmlns='http://www.w3.org/2005/Atom'>
+  <title type='text'><!-- @@@Title@@@ --></title>
+  <content type='xhtml'>
+    <div xmlns=\"http://www.w3.org/1999/xhtml\">
+      <!-- @@@Text@@@ -->
+    </div>
+  </content>
+  <author>
+    <name><!-- @@@User Name@@@ --></name>
+    <email><!-- @@@email@@@ --></email>
+  </author>
+</entry>")
