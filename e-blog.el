@@ -19,6 +19,7 @@
 ;; Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
 ;; Boston, MA 02110-1301, USA.
 
+;;; TODO: update commentary before 0.2 release.
 ;;; Commentary:
 
 ;; e-blog allows you to post to a single blog on Blogger.  There is not
@@ -32,12 +33,15 @@
 ;;   call e-blog-new-post
 ;;   C-c C-c from within the post buffer will submit your post
 
+;;; TODO: add doc-strings to all functions.
+
 (setq e-blog-name "mblog"
       e-blog-version "0.1"
       e-blog-service "blogger"
       e-blog-get-authinfo-url "https://www.google.com/accounts/ClientLogin"
       e-blog-buffer "*e-blog*"
-      e-blog-template "/home/mikey/emacs/emacs-blogger/e-blog-template.xml")
+      e-blog-template "/home/mikey/emacs/emacs-blogger/e-blog-template.xml"
+      e-blog-auth nil)
 
 (defun e-blog-get-credentials ()
   (setq e-blog-user (read-from-minibuffer "Username: ")
@@ -67,14 +71,15 @@
   (let (start)
     (setq start (point))
     (forward-line)
-    (setq e-blog-auth (buffer-substring start (- (point) 1)))))
+    (setq e-blog-auth
+	  (buffer-substring start (- (point) 1)))))
 
 (defun e-blog-get-bloglist ()
   (set-buffer e-blog-buffer)
   (let (start end address authheader)
     (setq start (point))
-    (setq authheader (concat "Authorization: GoogleLogin auth="
-			     e-blog-auth))
+    (setq authheader
+	  (concat "Authorization: GoogleLogin auth=" e-blog-auth))
     (call-process "curl" nil e-blog-buffer nil
 		  "--stderr" "/dev/null"
 		   "--header"
@@ -189,8 +194,8 @@
 	(setq end (point))
 	(add-to-list 'titles (list (buffer-substring beg end) post-url))
 	(search-forward "#post" nil t)))
-    (setq e-blog-blogs titles)))
-;;    (kill-buffer tmp-buffer)))
+    (setq e-blog-blogs titles)
+    (kill-buffer tmp-buffer)))
 
 (defun e-blog-setup-choose-buffer ()
   (let (choose-buffer)
@@ -242,7 +247,6 @@
 (defun e-blog-multi-blog ()
   (e-blog-setup-choose-buffer))
 
-
 (defun e-blog-check-multi ()
   (if (> (length e-blog-blogs) 1)
       (e-blog-multi-blog)
@@ -254,4 +258,3 @@
       ()
     (e-blog-do-auth))
   (e-blog-check-multi))
-
