@@ -165,15 +165,93 @@
   (kill-buffer "e-blog-tmp")
   (kill-buffer e-blog-post-buffer))
 
+(defun e-blog-parse-bloglist (bloglist)
+  (let (tmp-buffer titles beg end)
+    (setq tmp-buffer "*e-blog tmp bloglist*")
+    (setq titles ())
+    (get-buffer-create tmp-buffer)
+    (set-buffer tmp-buffer)
+    (insert-string bloglist)
+    (goto-char (point-min))
+    (let (post-url beg-url end-url)
+      (while (search-forward "#post" nil t)
+	(search-forward "href='")
+	(setq beg-url (point))
+	(search-forward "'/>")
+	(backward-char 3)
+	(setq end-url (point))
+	(setq post-url (buffer-substring beg-url end-url))
+	(search-backward "<title type='text'>")
+	(forward-char 19)
+	(setq beg (point))
+	(search-forward "</title>")
+	(backward-char 8)
+	(setq end (point))
+	(add-to-list 'titles (list (buffer-substring beg end) post-url))
+	(search-forward "#post" nil t)))
+    (setq e-blog-blogs titles)))
+;;    (kill-buffer tmp-buffer)))
+
+(defun e-blog-setup-choose-buffer ()
+  (let (choose-buffer)
+    (setq choose-buffer "*e-blog choose*")
+    (get-buffer-create choose-buffer)
+    (set-buffer choose-buffer)
+    (insert-string
+     (format "%d blogs found for %s:\n\n"
+	     (length e-blog-blogs) e-blog-user))
+    (let (beg)
+      (dolist (pair e-blog-blogs)
+	(insert-string "\t")
+	(insert-text-button
+	 "+"
+	 'action 'e-blog-list-posts)
+	(insert-string " ")
+	(insert-text-button
+	 (car pair)
+	 'action 'e-blog-set-post-blog)
+	(insert-string "\n"))
+      (insert-string "\nSelect which blog you would like to post to.")
+      (goto-char (point-min))
+      (search-forward "+ " nil t)
+      (switch-to-buffer choose-buffer)
+      (setq e-blog-choose-buffer choose-buffer))))
+
+(defun e-blog-list-posts (button)
+  (message "Sorry, listing posts is not yet implemented."))
+
+(defun e-blog-set-post-blog (button)
+  (message "Will post this article to `%s'."
+	   (button-label button))
+  (dolist (pair e-blog-blogs)
+    (if (equal (button-label button) (car pair))
+	(setq e-blog-post-url (nth 1 pair))))
+  (e-blog-setup-post-buffer)
+  (kill-buffer e-blog-choose-buffer))
+
 (defun e-blog-do-auth ()
   (e-blog-call-curl)
   (e-blog-get-authinfo)
   (e-blog-get-bloglist)
-  (e-blog-get-post-url))
+  (e-blog-parse-bloglist e-blog-bloglist))
+
+(defun e-blog-single-blog ()
+  (setq e-blog-post-url (car (car e-blog-blogs)))
+  (e-blog-setup-post-buffer))
+
+(defun e-blog-multi-blog ()
+  (e-blog-setup-choose-buffer))
+
+
+(defun e-blog-check-multi ()
+  (if (> (length e-blog-blogs) 1)
+      (e-blog-multi-blog)
+    (e-blog-single-blog)))
 
 (defun e-blog-new-post ()
   (interactive)
-  (if 'e-blog-auth
-      (e-blog-do-auth)
-    ())
-  (e-blog-setup-post-buffer))
+  (if e-blog-auth
+      ()
+    (e-blog-do-auth))
+  (e-blog-check-multi))
+
