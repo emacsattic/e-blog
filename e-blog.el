@@ -433,10 +433,9 @@ post to."
 		  "--header" "Content-Type: application/atom+xml"
 		  "-X" "PUT" "-d" "@/tmp/e-blog-tmp"
 		  e-blog-edit-url)
-  (delete-file "/tmp/e-blog-tmp")))
-;;  (kill-buffer e-blog-edit-buffer)
-;;  (kill-buffer e-blog-edit-xml-buffer))
-
+  (delete-file "/tmp/e-blog-tmp")
+  (kill-buffer e-blog-edit-buffer)
+  (kill-buffer "e-blog-tmp")))
 
 (defun e-blog-setup-edit-buffer (title text tmp-buffer)
   (setq e-blog-edit-buffer "*e-blog edit*")
