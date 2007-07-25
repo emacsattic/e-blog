@@ -33,7 +33,7 @@
 ;; blog, this step will not be presented to you).  Do C-c C-c when you
 ;; are finished writing your post.
 
-(setq e-blog-name "mblog"
+(setq e-blog-name "eblog"
       e-blog-version "0.1"
       e-blog-service "blogger"
       e-blog-get-authinfo-url "https://www.google.com/accounts/ClientLogin"
@@ -266,7 +266,6 @@ post to."
     (dolist (pair e-blog-blogs)
       (if (equal blog-title (car pair))
 	  (setq e-blog-post-url (nth 1 pair))))
-;;    (message "Setting e-blog-post url to %s." e-blog-post-url)
     (get-buffer-create tmp-buffer)
     (set-buffer tmp-buffer)
     (insert e-blog-post-url)
@@ -306,9 +305,11 @@ post to."
 	(search-forward "'")
 	(setq end (- (point) 1))
 	(setq post-id (buffer-substring beg end))
-	(setq post (list post-title blog-title post-id text))
+	(setq post (list post-title blogid post-id text))
 	(add-to-list 'sub-posts post))
       (setq posts sub-posts)
+      (setq e-blog-all-posts-xml
+	    (buffer-substring (point-min) (point-max)))
       (setq e-blog-post-list posts))
     (kill-buffer tmp-buffer)
     (set-buffer choose-buffer))
@@ -319,13 +320,149 @@ post to."
     (insert-text-button (car post)
 			'action 'e-blog-edit-post
 			'face 'dired-warning
-			'post-info (cdr post))
+			'post-info post)
     (insert "\n")))
 
 (defun e-blog-edit-post (button)
-  (let (post-info)
+  (let (beg end post-info blog-id post-id
+	text tmp-buffer post-xml title
+	text)
+    (setq tmp-buffer "*e-blog tmp*")
     (setq post-info (button-get button 'post-info))
-    (message "Sorry, editing posts is not yet implemented.")))
+    (setq title (nth 0 post-info))
+    (setq post-id (nth 2 post-info))
+    (setq text (nth 3 post-info))
+    (get-buffer-create tmp-buffer)
+    (set-buffer tmp-buffer)
+    (insert e-blog-all-posts-xml)
+    (goto-char (point-min))
+    (search-forward (concat ".post-" post-id))
+    (search-backward "<entry>")
+    (setq beg (point))
+    (search-forward "</entry>")
+    (setq end (point))
+    (setq post-xml (buffer-substring beg end))
+    (kill-buffer tmp-buffer)
+    (get-buffer-create tmp-buffer)
+    (set-buffer tmp-buffer)
+    (insert post-xml)
+    (goto-char (point-max))
+    (search-backward "<title type='text'>")
+    (setq beg (point))
+    (search-forward "</content>")
+    (setq end (point))
+    (delete-region beg end)
+    (insert "<!-- @@@Title & Content@@@ -->")
+    (e-blog-setup-edit-buffer title text tmp-buffer)))
+;;    (e-blog-do-markdowns)))
+
+(defun e-blog-do-markdowns ()
+  (let (beg-text beg end replacements)
+    (move-beginning-of-line nil)
+    (setq beg-text (point)
+	  beg (point))
+    (search-forward "&gt;")
+    (setq end (point))
+    (delete-region beg end)
+    (setq beg (point))
+    (re-search-forward " *")
+    (delete-region beg (point))
+    (setq replacements
+	  '(("&lt;" "<")
+	    ("&gt;" ">")
+	    ("<p>" "")
+	    ("</p>" "\n\n")
+	    ("</div>" "")
+	    ("<br />" "")))
+    (dolist (list replacements)
+      (goto-char beg-text)
+      (while (search-forward (car list) nil t)
+	(replace-match (nth 1 list))))
+    (goto-char (point-max))
+    (forward-line -2)
+    (move-end-of-line nil)
+    (delete-region (point) (point-max))))
+
+(defun e-blog-post-edit ()
+  (interactive)
+  (let (title text)
+    (set-buffer e-blog-edit-buffer)
+    (goto-char (point-min))
+    (search-forward ":")
+    (let (start end)
+      (forward-char 1)
+      (setq start (point))
+      (forward-line)
+      (setq end (point))
+      (setq title (buffer-substring start end)))
+
+    (let (start)
+      (forward-line)
+      (setq start (point))
+      (e-blog-do-markups)
+      (setq text (buffer-substring start (point-max))))
+
+    (set-buffer e-blog-edit-xml-buffer)
+    (goto-char (point-min))
+    (search-forward "<!-- @@@Title & Content@@@ -->")
+    (replace-match
+     (concat
+      "<title type='text'>" title "</title>"
+      "<content type='xhtml'><div xmlns=\"http://www.w3.org/1999/xhtml\">"
+      text
+      "</div></content>"))
+    (goto-char (point-max))
+    (let (beg)
+      (search-backward "link rel='edit'")
+      (search-forward "href='")
+      (setq beg (point))
+      (search-forward "'")
+      (setq e-blog-edit-url (buffer-substring beg (- (point) 1))))
+    (goto-char (point-min))
+    (while (search-forward "\n" nil t)
+      (replace-match ""))
+    (goto-char (point-min))
+    (search-forward "entry")
+    (insert " xmlns='http://www.w3.org/2005/Atom'")
+    (set-visited-file-name "/tmp/e-blog-tmp")
+    (save-buffer)
+    (call-process "curl" nil e-blog-buffer nil
+		  "--header"
+		  (concat "Authorization: GoogleLogin auth="
+			  e-blog-auth)
+		  "--header" "Content-Type: application/atom+xml"
+		  "-X" "PUT" "-d" "@/tmp/e-blog-tmp"
+		  e-blog-edit-url)
+  (delete-file "/tmp/e-blog-tmp")))
+;;  (kill-buffer e-blog-edit-buffer)
+;;  (kill-buffer e-blog-edit-xml-buffer))
+
+
+(defun e-blog-setup-edit-buffer (title text tmp-buffer)
+  (setq e-blog-edit-buffer "*e-blog edit*")
+  (get-buffer-create e-blog-edit-buffer)
+  (set-buffer e-blog-edit-buffer)
+  (let (pos)
+    (insert "Title: \n")
+    (setq pos (- (point) 1))
+    (insert "-------- Post Follows This Line --------\n")
+    (goto-char pos))
+  (add-text-properties 1 7
+		       '(read-only "Please the title after the colon."
+			 face info-menu-star))
+  (add-text-properties 9 49
+		       '(read-only "Please type your post below this line."
+			 face info-xref-visited))
+  (goto-char (point-min))
+  (move-end-of-line nil)
+  (insert title)
+  (forward-line 2)
+  (insert text)
+  (local-set-key "\C-c\C-c" 'e-blog-post-edit)
+  (e-blog-do-markdowns)
+  (setq e-blog-edit-xml-buffer tmp-buffer)
+  (switch-to-buffer e-blog-edit-buffer)
+  (message tmp-buffer))
 
 (defun e-blog-collapse-post-list (button)
   (message "Sorry, collapsing lists is not yet implemented."))
@@ -388,3 +525,8 @@ posting."
     <email><!-- @@@email@@@ --></email>
   </author>
 </entry>")
+
+
+
+
+
