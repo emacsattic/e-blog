@@ -19,22 +19,83 @@
 ;; Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
 ;; Boston, MA 02110-1301, USA.
 
-;;; TODO: update commentary before 0.2 release.
 ;;; Commentary:
 
 ;; e-blog allows you to post to one or more blogs on Blogger.  You
 ;; must have curl <http://curl.haxx.se> to use e-blog.
 
-;; To use e-blog: simply load this file:
-;;    (load-file "/path-to-eblog/e-blog.el")
-;; call e-blog-new-post:
-;;    M-x e-blog-new-post
-;; If necessary, select which blog to post to (if you only have one
-;; blog, this step will not be presented to you).  Do C-c C-c when you
-;; are finished writing your post.
+;; e-blog: A GNU Emacs interface to Blogger.
+
+;; Introduction
+;; ------------
+;; e-blog is a simple interface for GNU Emacs to post, edit, and delete
+;; Blogger posts.  One might ask, "Why another blogging interface to
+;; Emacs?"  The short answer is that I couldn't find an interface that
+;; worked (or, probably more accurately, that I could _get_ to work).
+
+;; So, I set out to write one of my own...
+
+;; Goals
+;; -----
+;; The original goal for e-blog was to provide a command that
+;; I could punch in and be presented with a buffer for writing a new post
+;; to Blogger and send it as if I were writing an e-mail.  That was it.
+;; I didn't have a particular intention of going further with it.
+
+;; I decided that if I was going to go that far, I may as well include
+;; the other features (updating, deleting) as well.  These features are
+;; now included.
+
+;; Further goals, at the moment, include removing the dependency on
+;; "curl".  This is possible using `open-network-stream' and will
+;; probably be a goal before the 0.4 release.
+
+;; For now, here is the (probably extremely buggy) e-blog 0.2.
+
+;; Setup/Usage
+;; -----------
+;; There shouldn't be any setup, really.  It should be as simple as:
+;;       (load-file "/path-to-e-blog/e-blog.el")
+;;       (e-blog-new-post)
+
+;; e-blog will then ask you for your Blogger username and password.  It
+;; will save the authorization code that is returned from Blogger so
+;; that, from within a single Emacs session, it will only need your
+;; username and password once.
+
+;; e-blog will present you with a buffer allowing you to choose which
+;; blog you want to send a post to.  If you only have one blog, it will
+;; still present you with this buffer so that you have the option of
+;; listing and deleting posts.  Simply move point to the name of the blog
+;; that you want to post to and press <Enter>, or click on the blog title
+;; with button-2.
+
+;; Clicking on the `+' next to a blog title will present you with a list
+;; of posts for that blog.  Clicking on a post title will present you
+;; with a buffer for editing that post.  C-c C-c in this new buffer will
+;; send the updated post to blogger.
+
+;; Clicking on the `[X]' behind the title of a post will DELETE the post
+;; preceding it.  e-blog DOES NOT ask for confirmation before deleting
+;; the post.  This may change in the future.
+
+;; If you intend to use e-blog often, you could bind `e-blog-new-post' to
+;; a key.  Personally, I have
+;;       (global-set-key "\C-cb" 'e-blog-new-post)
+;; in my ~/.emacs.
+
+;; Potential Issues
+;; ----------------
+;; e-blog tends to get a little bit confused if there are old e-blog
+;; buffers lying around.  For instance, if one initiated a post and never
+;; actually sent it, buried its buffer, and then asked e-blog to initiate
+;; a new post, e-blog will probably become confused.  If you find this
+;; happening to you, simply delete any old e-blog `post' or `choose'
+;; buffers that may be around and call `e-blog-new-post' again.  This
+;; should be corrected in the next release.
 
 (setq e-blog-name "eblog"
-      e-blog-version "0.1"
+      e-blog-version "0.2"
       e-blog-service "blogger"
       e-blog-get-authinfo-url "https://www.google.com/accounts/ClientLogin"
       e-blog-buffer "*e-blog*"
@@ -379,7 +440,6 @@ post to."
     (delete-region beg end)
     (insert "<!-- @@@Title & Content@@@ -->")
     (e-blog-setup-edit-buffer title text tmp-buffer)))
-;;    (e-blog-do-markdowns)))
 
 (defun e-blog-do-markdowns ()
   (let (beg-text beg end replacements)
@@ -521,12 +581,13 @@ a blog title in the list contained in `e-blog-blogs' and sets
   "Sets the user up for posting to multiple blogs."
   (e-blog-setup-choose-buffer))
 
+;; FIXME: e-blog-check multi is no longer needed.
 (defun e-blog-check-multi ()
   "Checks whether the user has multiple blogs available for
 posting."
   (if (> (length e-blog-blogs) 1)
       (e-blog-multi-blog)
-    (e-blog-single-blog)))
+    (e-blog-multi-blog)))
 
 (defun e-blog-new-post ()
   "Initializes e-blog."
