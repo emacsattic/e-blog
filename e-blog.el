@@ -321,8 +321,33 @@ post to."
 			'action 'e-blog-edit-post
 			'face 'dired-warning
 			'post-info post)
+    (insert-text-button " [X]"
+			'action 'e-blog-delete-post
+			'face 'info-menu-star
+			'post-info post)
     (insert "\n")))
 
+(defun e-blog-delete-post (button)
+  (let (beg url post-id blog-id post-info)
+    (setq post-info (button-get button 'post-info))
+    (setq post-id (nth 2 post-info))
+    (setq blog-id (nth 1 post-info))
+    (setq url (concat "http://www.blogger.com/feeds/"
+		  blog-id
+		  "/posts/default/"
+		  post-id))
+    (call-process "curl" nil e-blog-buffer nil
+		  "--header" 
+		  (concat "Authorization: GoogleLogin auth="
+			  e-blog-auth)
+		  "-X" "DELETE"
+		  url)
+    (move-beginning-of-line nil)
+    (setq beg (point))
+    (move-end-of-line nil)
+    (delete-region beg (+ (point) 1))
+    (message "Post Deleted!")))
+		  
 (defun e-blog-edit-post (button)
   (let (beg end post-info blog-id post-id
 	text tmp-buffer post-xml title
