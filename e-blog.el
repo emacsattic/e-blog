@@ -172,6 +172,7 @@ stored in the variable `e-blog-auth'."
 		       '(read-only "Please type your post below this line."
 			 face info-xref-visited))
   (local-set-key "\C-c\C-c" 'e-blog-post)
+  (auto-fill-mode 1)
   (switch-to-buffer e-blog-post-buffer))
 
 (defun e-blog-do-markups ()
@@ -267,6 +268,8 @@ which is stored in `e-blog-sent-buffer'."
 posting.  Sets up a buffer that allows choosing which blog to
 post to."
   (set-buffer (get-buffer-create e-blog-choose-buffer))
+  (erase-buffer)
+  (local-set-key "\t" 'e-blog-forward-button)
   (insert-string
    (format "%d blogs found for %s:\n\n"
 	   (length e-blog-blogs) e-blog-user))
@@ -286,15 +289,21 @@ post to."
       (insert-string "\n"))
     (insert-string "\nSelect which blog you would like to post to.")
     (goto-char (point-min))
-    (search-forward "+ " nil t)
+    (search-forward "+" nil t)
+    (forward-char -1)
     (switch-to-buffer e-blog-choose-buffer)))
+
+(defun e-blog-forward-button ()
+  (interactive)
+  (forward-button 1 t))
 
 (defun e-blog-list-posts (button)
   "Creates a list containing all of the posts for a given blog."
   (setq e-blog-post-list ())
-  (let (beg blog-title blog-id url posts)
-    (setq posts ())
-    (setq blog-title (button-get button 'title))
+  (let (beg blog-title blog-id url posts button-pos)
+    (setq posts ()
+	  blog-title (button-get button 'title)
+	  button-pos (point))
     (save-excursion
       (delete-char 1)
       (insert-text-button "-"
@@ -322,10 +331,11 @@ post to."
     (search-backward "<title type='text'>")
     (e-blog-extract-posts)
     (kill-buffer e-blog-tmp-buffer)
-    (set-buffer e-blog-choose-buffer))
-  (move-end-of-line nil)
-  (insert "\n")
-  (e-blog-insert-posts e-blog-post-list))
+    (set-buffer e-blog-choose-buffer)
+    (move-end-of-line nil)
+    (insert "\n")
+    (e-blog-insert-posts e-blog-post-list)
+    (goto-char button-pos)))
 
 (defun e-blog-extract-posts ()
     (let (post-title text post-id post sub-posts)
@@ -349,17 +359,20 @@ post to."
       (setq e-blog-post-list posts)))
 
 (defun e-blog-insert-posts (post-list)
-  (dolist (post post-list)
-    (insert "\t    * ")
-    (insert-text-button (car post)
-			'action 'e-blog-edit-post
-			'face 'dired-warning
-			'post-info post)
-    (insert-text-button " [X]"
-			'action 'e-blog-delete-post
-			'face 'info-menu-star
-			'post-info post)
-    (insert "\n")))
+  (save-excursion
+    (dolist (post post-list)
+      (insert "\t    * ")
+      (insert-text-button (car post)
+			  'action 'e-blog-edit-post
+			  'face 'dired-warning
+			  'post-info post)
+      (insert " [")
+      (insert-text-button "X"
+			  'action 'e-blog-delete-post
+			  'face 'info-menu-star
+			  'post-info post)
+      (insert "]")
+      (insert "\n"))))
 
 (defun e-blog-delete-post (button)
   (let (beg url post-id blog-id post-info)
@@ -513,10 +526,37 @@ post to."
   (insert text)
   (local-set-key "\C-c\C-c" 'e-blog-post-edit)
   (e-blog-do-markdowns)
+  (auto-fill-mode 1)
   (switch-to-buffer e-blog-edit-buffer))
 
 (defun e-blog-collapse-post-list (button)
-  (message "Sorry, collapsing lists is not yet implemented."))
+  (let (beg button-pos collapsed)
+    (setq button-pos (point))
+    (forward-line 1)
+    (setq beg (point))
+    (search-forward "[X]\n\n")
+    (setq collapsed (buffer-substring beg (point)))
+    (delete-region beg (point))
+    (goto-char button-pos)
+    (delete-char 1)
+    (insert-text-button "+"
+			'action 'e-blog-insert-collapsed
+			'face 'custom-state
+			'collapsed collapsed)
+    (forward-char -1)))
+
+(defun e-blog-insert-collapsed (button)
+  (save-excursion
+    (let (collapsed button-pos)
+      (setq button-pos (point))
+      (setq collapsed (button-get button 'collapsed))
+      (forward-line 1)
+      (insert collapsed)
+      (goto-char button-pos)
+      (delete-char 1)
+      (insert-text-button "-"
+			  'action 'e-blog-collapse-post-list
+			  'face 'custom-state))))
 
 (defun e-blog-set-post-blog (button)
   "The callback for the buttons created in
