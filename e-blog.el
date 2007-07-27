@@ -462,7 +462,9 @@ post to."
 		  e-blog-edit-url)
   (delete-file "/tmp/e-blog-tmp")
   (kill-buffer e-blog-edit-buffer)
-  (kill-buffer "e-blog-tmp")))
+  (kill-buffer e-blog-choose-buffer)
+  (kill-buffer "e-blog-tmp")
+  (message "Sending request for edit... Done." )))
 
 (defun e-blog-edit-formulate-xml (title text)
     (set-buffer e-blog-tmp-buffer)
@@ -488,7 +490,8 @@ post to."
     (search-forward "entry")
     (insert " xmlns='http://www.w3.org/2005/Atom'")
     (set-visited-file-name "/tmp/e-blog-tmp")
-    (save-buffer))
+    (save-buffer)
+    (message "Sending request for edit..."))
 
 (defun e-blog-setup-edit-buffer (title text)
   (set-buffer (get-buffer-create e-blog-edit-buffer))
@@ -536,30 +539,13 @@ a blog title in the list contained in `e-blog-blogs' and sets
   (e-blog-get-bloglist)
   (e-blog-parse-bloglist e-blog-bloglist))
 
-(defun e-blog-single-blog ()
-  "Sets the user up for posting only to a single blog."
-  (setq e-blog-post-url (car (car e-blog-blogs)))
-  (e-blog-setup-post-buffer))
-
-(defun e-blog-multi-blog ()
-  "Sets the user up for posting to multiple blogs."
-  (e-blog-setup-choose-buffer))
-
-;; FIXME: e-blog-check multi is no longer needed.
-(defun e-blog-check-multi ()
-  "Checks whether the user has multiple blogs available for
-posting."
-  (if (> (length e-blog-blogs) 1)
-      (e-blog-multi-blog)
-    (e-blog-multi-blog)))
-
 (defun e-blog-new-post ()
   "Initializes e-blog."
   (interactive)
   (if e-blog-auth
       ()
     (e-blog-do-auth))
-  (e-blog-check-multi))
+  (e-blog-setup-choose-buffer))
 
 (setq e-blog-post-xml 
 "<entry xmlns='http://www.w3.org/2005/Atom'>
