@@ -156,20 +156,6 @@ stored in the variable `e-blog-auth'."
 		"http://www.blogger.com/feeds/default/blogs")
   (setq e-blog-bloglist (buffer-substring (point-min) (point-max))))
 
-;; (defun e-blog-get-post-url ()
-;;   "Used when there is only one blog available for posting for
-;; `e-blog-user'.  Extracts the post url for this single blog and
-;; stores it in `e-blog-post-url'."
-;;   (let (start end)
-;;     (set-buffer e-blog-buffer)
-;;     (search-backward "#post")
-;;     (search-forward "href='")
-;;     (setq start (point))
-;;     (search-forward "'")
-;;     (setq end (- (point) 1))
-;;     (goto-char (point-max))
-;;     (setq e-blog-post-url (buffer-substring start end))))
-
 (defun e-blog-setup-post-buffer ()
   "Creates a buffer for writing a blog post."
   (set-buffer (get-buffer-create e-blog-post-buffer))
@@ -280,32 +266,28 @@ which is stored in `e-blog-sent-buffer'."
   "Used when `e-blog-user' has more than one blog available for
 posting.  Sets up a buffer that allows choosing which blog to
 post to."
-  (let (choose-buffer)
-    (setq choose-buffer "*e-blog choose*")
-    (get-buffer-create choose-buffer)
-    (set-buffer choose-buffer)
-    (insert-string
-     (format "%d blogs found for %s:\n\n"
-	     (length e-blog-blogs) e-blog-user))
-    (let (beg)
-      (dolist (pair e-blog-blogs)
-	(insert-string "\t")
-	(insert-text-button
-	 "+"
-	 'action 'e-blog-list-posts
-	 'face 'custom-state
-	 'title (car pair))
-	(insert-string " ")
-	(insert-text-button
-	 (car pair)
-	 'action 'e-blog-set-post-blog
-	 'face 'custom-link)
-	(insert-string "\n"))
-      (insert-string "\nSelect which blog you would like to post to.")
-      (goto-char (point-min))
-      (search-forward "+ " nil t)
-      (switch-to-buffer choose-buffer)
-      (setq e-blog-choose-buffer choose-buffer))))
+  (set-buffer (get-buffer-create e-blog-choose-buffer))
+  (insert-string
+   (format "%d blogs found for %s:\n\n"
+	   (length e-blog-blogs) e-blog-user))
+  (let (beg)
+    (dolist (pair e-blog-blogs)
+      (insert-string "\t")
+      (insert-text-button
+       "+"
+       'action 'e-blog-list-posts
+       'face 'custom-state
+       'title (car pair))
+      (insert-string " ")
+      (insert-text-button
+       (car pair)
+       'action 'e-blog-set-post-blog
+       'face 'custom-link)
+      (insert-string "\n"))
+    (insert-string "\nSelect which blog you would like to post to.")
+    (goto-char (point-min))
+    (search-forward "+ " nil t)
+    (switch-to-buffer e-blog-choose-buffer)))
 
 (defun e-blog-list-posts (button)
   "Creates a list containing all of the posts for a given blog."
@@ -313,11 +295,6 @@ post to."
   (let (beg blog-title blog-id url posts)
     (setq posts ())
     (setq blog-title (button-get button 'title))
-;;     (save-excursion
-;;       (forward-char 2)
-;;       (setq beg (point))
-;;       (move-end-of-line nil)
-;;       (setq blog-title (buffer-substring-no-properties beg (point))))
     (save-excursion
       (delete-char 1)
       (insert-text-button "-"
@@ -597,8 +574,3 @@ posting."
     <email><!-- @@@email@@@ --></email>
   </author>
 </entry>")
-
-
-
-
-
