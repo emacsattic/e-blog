@@ -99,6 +99,10 @@
       e-blog-service "blogger"
       e-blog-get-authinfo-url "https://www.google.com/accounts/ClientLogin"
       e-blog-buffer "*e-blog*"
+      e-blog-post-buffer "*e-blog post*"
+      e-blog-choose-buffer "*e-blog choose*"
+      e-blog-edit-buffer "*e-blog edit*"
+      e-blog-tmp-buffer "*e-blog tmp*"
       e-blog-auth nil)
 
 (defun e-blog-get-credentials ()
@@ -130,11 +134,14 @@ communication with the Gdata API."
       ()
     (setq e-blog-error "Authinfo not found."))
   (forward-char 5)
-  (let (start)
-    (setq start (point))
+  (let (beg)
+    (setq beg (point))
     (forward-line)
     (setq e-blog-auth
-	  (buffer-substring start (- (point) 1)))))
+	  (concat 
+	   "Authorization: GoogleLogin auth="
+	   (buffer-substring beg (- (point) 1))))
+    (erase-buffer)))
 
 (defun e-blog-get-bloglist ()
   "Calls curl with a request for the metafeed containing all
@@ -142,44 +149,38 @@ blogs for the user `e-blog-user'.  This function uses the
 authorization string obtained with `e-blog-get-authinfo' and
 stored in the variable `e-blog-auth'."
   (set-buffer e-blog-buffer)
-  (let (start end address authheader)
-    (setq start (point))
-    (setq authheader
-	  (concat "Authorization: GoogleLogin auth=" e-blog-auth))
-    (call-process "curl" nil e-blog-buffer nil
-		  "--stderr" "/dev/null"
-		   "--header"
-		   authheader
-		  "http://www.blogger.com/feeds/default/blogs")
-    (setq end (goto-char (point-max)))
-    (setq e-blog-bloglist (buffer-substring start end))))
+  (call-process "curl" nil e-blog-buffer nil
+		"--stderr" "/dev/null"
+		"--header"
+		e-blog-auth
+		"http://www.blogger.com/feeds/default/blogs")
+  (setq e-blog-bloglist (buffer-substring (point-min) (point-max))))
 
-(defun e-blog-get-post-url ()
-  "Used when there is only one blog available for posting for
-`e-blog-user'.  Extracts the post url for this single blog and
-stores it in `e-blog-post-url'."
-  (let (start end)
-    (set-buffer e-blog-buffer)
-    (search-backward "#post")
-    (search-forward "href='")
-    (setq start (point))
-    (search-forward "'")
-    (setq end (- (point) 1))
-    (goto-char (point-max))
-    (setq e-blog-post-url (buffer-substring start end))))
+;; (defun e-blog-get-post-url ()
+;;   "Used when there is only one blog available for posting for
+;; `e-blog-user'.  Extracts the post url for this single blog and
+;; stores it in `e-blog-post-url'."
+;;   (let (start end)
+;;     (set-buffer e-blog-buffer)
+;;     (search-backward "#post")
+;;     (search-forward "href='")
+;;     (setq start (point))
+;;     (search-forward "'")
+;;     (setq end (- (point) 1))
+;;     (goto-char (point-max))
+;;     (setq e-blog-post-url (buffer-substring start end))))
 
 (defun e-blog-setup-post-buffer ()
   "Creates a buffer for writing a blog post."
-  (setq e-blog-post-buffer "*e-blog post*")
-  (get-buffer-create e-blog-post-buffer)
-  (set-buffer e-blog-post-buffer)
+  (set-buffer (get-buffer-create e-blog-post-buffer))
+  (erase-buffer)
   (let (pos)
     (insert "Title: \n")
     (setq pos (- (point) 1))
     (insert "-------- Post Follows This Line --------\n")
     (goto-char pos))
   (add-text-properties 1 7
-		       '(read-only "Please the title after the colon."
+		       '(read-only "Please type the title after the colon."
 			 face info-menu-star))
   (add-text-properties 9 49
 		       '(read-only "Please type your post below this line."
@@ -191,11 +192,19 @@ stores it in `e-blog-post-url'."
   "Prepends `<p>' to the beginning of each paragraph.  Ends each
 paragraph with `</p>'."
   (interactive)
-  (insert-string "<p>")
-  (while (search-forward "\n\n" nil t)
-    (replace-match "</p>\n<p>"))
-  (goto-char (point-max))
-  (insert-string "</p>\n"))
+  (let (replacements beg-text)
+    (setq replacements
+	  '(("\n\n" "</p><p>")
+	    ("\n" " ")
+	    ("</p><p>" "</p>\n<p>")))
+    (setq beg-text (point))
+    (insert-string "<p>")
+    (dolist (list replacements)
+      (while (search-forward (car list) nil t)
+	(replace-match (nth 1 list)))
+      (goto-char beg-text))
+    (goto-char (point-max))
+    (insert-string "</p>")))
 
 (defun e-blog-post ()
   "Extracts title and text from `e-blog-post-buffer', substitutes
@@ -214,13 +223,11 @@ which is stored in `e-blog-sent-buffer'."
       (forward-line)
       (setq end (point))
       (setq title (buffer-substring start end)))
-
     (let (start)
       (forward-line)
       (setq start (point))
       (e-blog-do-markups)
       (setq text (buffer-substring start (point-max))))
-
     (get-buffer-create e-blog-sent-buffer)
     (set-buffer e-blog-sent-buffer)
     (insert-string e-blog-post-xml)
@@ -237,8 +244,7 @@ which is stored in `e-blog-sent-buffer'."
     (save-buffer)
     (call-process "curl" nil e-blog-buffer nil
 		  "-v" "--header"
-		  (concat "Authorization: GoogleLogin auth="
-			  e-blog-auth)
+		  e-blog-auth
 		  "--header" "Content-Type: application/atom+xml"
 		  "-d" "@/tmp/e-blog-tmp"
 		  e-blog-post-url)
@@ -249,31 +255,26 @@ which is stored in `e-blog-sent-buffer'."
 (defun e-blog-parse-bloglist (bloglist)
   "Extracts the titles and post urls for each blog available to
 `e-blog-user', and stores them in `e-blog-blogs'."
-  (let (tmp-buffer titles beg end)
-    (setq tmp-buffer "*e-blog tmp bloglist*")
+  (let (titles beg post-url)
     (setq titles ())
-    (get-buffer-create tmp-buffer)
-    (set-buffer tmp-buffer)
+    (set-buffer (get-buffer-create e-blog-tmp-buffer))
     (insert-string bloglist)
     (goto-char (point-min))
-    (let (post-url beg-url end-url)
-      (while (search-forward "#post" nil t)
-	(search-forward "href='")
-	(setq beg-url (point))
-	(search-forward "'/>")
-	(backward-char 3)
-	(setq end-url (point))
-	(setq post-url (buffer-substring beg-url end-url))
-	(search-backward "<title type='text'>")
-	(forward-char 19)
-	(setq beg (point))
-	(search-forward "</title>")
-	(backward-char 8)
-	(setq end (point))
-	(add-to-list 'titles (list (buffer-substring beg end) post-url))
-	(search-forward "#post" nil t)))
-    (setq e-blog-blogs titles)
-    (kill-buffer tmp-buffer)))
+    (while (search-forward "#post" nil t)
+      (search-forward "href='")
+      (setq beg (point))
+      (search-forward "'/>")
+      (backward-char 3)
+      (setq post-url (buffer-substring beg (point)))
+      (search-backward "<title type='text'>")
+      (forward-char 19)
+      (setq beg (point))
+      (search-forward "</title>")
+      (backward-char 8)
+      (add-to-list 'titles (list (buffer-substring beg (point)) post-url))
+      (search-forward "#post" nil t))
+  (setq e-blog-blogs titles))
+  (kill-buffer e-blog-tmp-buffer))
 
 (defun e-blog-setup-choose-buffer ()
   "Used when `e-blog-user' has more than one blog available for
@@ -292,7 +293,8 @@ post to."
 	(insert-text-button
 	 "+"
 	 'action 'e-blog-list-posts
-	 'face 'custom-state)
+	 'face 'custom-state
+	 'title (car pair))
 	(insert-string " ")
 	(insert-text-button
 	 (car pair)
@@ -308,17 +310,14 @@ post to."
 (defun e-blog-list-posts (button)
   "Creates a list containing all of the posts for a given blog."
   (setq e-blog-post-list ())
-  (let (beg end blog-title blogid tmp-buffer authheader url choose-buffer posts)
+  (let (beg blog-title blog-id url posts)
     (setq posts ())
-    (setq choose-buffer (current-buffer))
-    (setq tmp-buffer "*e-blog tmp posts*")
-    (save-excursion
-      (forward-char 2)
-      (setq beg (point))
-      (move-end-of-line nil)
-      (setq end (point))
-      (setq blog-title (buffer-substring-no-properties beg end)))
-    (message blog-title)
+    (setq blog-title (button-get button 'title))
+;;     (save-excursion
+;;       (forward-char 2)
+;;       (setq beg (point))
+;;       (move-end-of-line nil)
+;;       (setq blog-title (buffer-substring-no-properties beg (point))))
     (save-excursion
       (delete-char 1)
       (insert-text-button "-"
@@ -327,56 +326,53 @@ post to."
     (dolist (pair e-blog-blogs)
       (if (equal blog-title (car pair))
 	  (setq e-blog-post-url (nth 1 pair))))
-    (get-buffer-create tmp-buffer)
-    (set-buffer tmp-buffer)
+    (set-buffer (get-buffer-create e-blog-tmp-buffer))
     (insert e-blog-post-url)
     (move-beginning-of-line nil)
     (search-forward "feeds/")
     (setq beg (point))
     (search-forward "/")
-    (setq end (- (point) 1))
-    (setq blogid (buffer-substring beg end))
-    (insert (concat "\nBlog ID is: " blogid "\n"))
+    (setq blog-id (buffer-substring beg (- (point) 1)))
     (setq url 
-	  (concat "http://www.blogger.com/feeds/" blogid "/posts/default"))
-    (insert (concat "URL for posts: " url "\n"))
-    (setq authheader
-	  (concat "Authorization: GoogleLogin auth=" e-blog-auth))
-    (call-process "curl" nil tmp-buffer nil
+	  (concat "http://www.blogger.com/feeds/" blog-id "/posts/default"))
+    (call-process "curl" nil e-blog-tmp-buffer nil
 		  "--stderr" "/dev/null"
-		  "--header" authheader
+		  "--header"
+		  e-blog-auth
 		  url)
     (move-beginning-of-line 1)
     (search-forward "<content type='html'>")
     (search-backward "<title type='text'>")
+    (e-blog-extract-posts)
+    (kill-buffer e-blog-tmp-buffer)
+    (set-buffer e-blog-choose-buffer))
+  (move-end-of-line nil)
+  (insert "\n")
+  (e-blog-insert-posts e-blog-post-list))
+
+(defun e-blog-extract-posts ()
     (let (post-title text post-id post sub-posts)
       (setq sub-posts ())
       (while (search-forward "<title type='text'>" nil t)
 	(setq beg (point))
 	(search-forward "<")
-	(setq end (- (point) 1))
-	(setq post-title (buffer-substring beg end))
+	(setq post-title (buffer-substring beg (- (point) 1)))
 	(search-forward "<content type='html'>")
 	(setq beg (point))
 	(search-forward "</content>")
-	(setq end (- (point) 10))
-	(setq text (buffer-substring beg end))
+	(setq text (buffer-substring beg (- (point) 10)))
 	(search-forward "postID=")
 	(setq beg (point))
 	(search-forward "'")
-	(setq end (- (point) 1))
-	(setq post-id (buffer-substring beg end))
-	(setq post (list post-title blogid post-id text))
-	(add-to-list 'sub-posts post))
-      (setq posts sub-posts)
+	(setq post-id (buffer-substring beg (- (point) 1)))
+	(setq post (list post-title blog-id post-id text))
+	(add-to-list 'posts post))
       (setq e-blog-all-posts-xml
 	    (buffer-substring (point-min) (point-max)))
-      (setq e-blog-post-list posts))
-    (kill-buffer tmp-buffer)
-    (set-buffer choose-buffer))
-  (move-end-of-line 1)
-  (insert "\n")
-  (dolist (post e-blog-post-list)
+      (setq e-blog-post-list posts)))
+
+(defun e-blog-insert-posts (post-list)
+  (dolist (post post-list)
     (insert "\t    * ")
     (insert-text-button (car post)
 			'action 'e-blog-edit-post
@@ -399,8 +395,7 @@ post to."
 		  post-id))
     (call-process "curl" nil e-blog-buffer nil
 		  "--header" 
-		  (concat "Authorization: GoogleLogin auth="
-			  e-blog-auth)
+		  e-blog-auth
 		  "-X" "DELETE"
 		  url)
     (move-beginning-of-line nil)
@@ -413,13 +408,11 @@ post to."
   (let (beg end post-info blog-id post-id
 	text tmp-buffer post-xml title
 	text)
-    (setq tmp-buffer "*e-blog tmp*")
     (setq post-info (button-get button 'post-info))
     (setq title (nth 0 post-info))
     (setq post-id (nth 2 post-info))
     (setq text (nth 3 post-info))
-    (get-buffer-create tmp-buffer)
-    (set-buffer tmp-buffer)
+    (set-buffer (get-buffer-create e-blog-tmp-buffer))
     (insert e-blog-all-posts-xml)
     (goto-char (point-min))
     (search-forward (concat ".post-" post-id))
@@ -428,9 +421,7 @@ post to."
     (search-forward "</entry>")
     (setq end (point))
     (setq post-xml (buffer-substring beg end))
-    (kill-buffer tmp-buffer)
-    (get-buffer-create tmp-buffer)
-    (set-buffer tmp-buffer)
+    (erase-buffer)
     (insert post-xml)
     (goto-char (point-max))
     (search-backward "<title type='text'>")
@@ -439,7 +430,7 @@ post to."
     (setq end (point))
     (delete-region beg end)
     (insert "<!-- @@@Title & Content@@@ -->")
-    (e-blog-setup-edit-buffer title text tmp-buffer)))
+    (e-blog-setup-edit-buffer title text)))
 
 (defun e-blog-do-markdowns ()
   (let (beg-text beg end replacements)
@@ -480,14 +471,24 @@ post to."
       (forward-line)
       (setq end (point))
       (setq title (buffer-substring start end)))
-
     (let (start)
       (forward-line)
       (setq start (point))
       (e-blog-do-markups)
       (setq text (buffer-substring start (point-max))))
+    (e-blog-edit-formulate-xml title text)
+    (call-process "curl" nil e-blog-buffer nil
+		  "--header"
+		  e-blog-auth
+		  "--header" "Content-Type: application/atom+xml"
+		  "-X" "PUT" "-d" "@/tmp/e-blog-tmp"
+		  e-blog-edit-url)
+  (delete-file "/tmp/e-blog-tmp")
+  (kill-buffer e-blog-edit-buffer)
+  (kill-buffer "e-blog-tmp")))
 
-    (set-buffer e-blog-edit-xml-buffer)
+(defun e-blog-edit-formulate-xml (title text)
+    (set-buffer e-blog-tmp-buffer)
     (goto-char (point-min))
     (search-forward "<!-- @@@Title & Content@@@ -->")
     (replace-match
@@ -510,22 +511,10 @@ post to."
     (search-forward "entry")
     (insert " xmlns='http://www.w3.org/2005/Atom'")
     (set-visited-file-name "/tmp/e-blog-tmp")
-    (save-buffer)
-    (call-process "curl" nil e-blog-buffer nil
-		  "--header"
-		  (concat "Authorization: GoogleLogin auth="
-			  e-blog-auth)
-		  "--header" "Content-Type: application/atom+xml"
-		  "-X" "PUT" "-d" "@/tmp/e-blog-tmp"
-		  e-blog-edit-url)
-  (delete-file "/tmp/e-blog-tmp")
-  (kill-buffer e-blog-edit-buffer)
-  (kill-buffer "e-blog-tmp")))
+    (save-buffer))
 
-(defun e-blog-setup-edit-buffer (title text tmp-buffer)
-  (setq e-blog-edit-buffer "*e-blog edit*")
-  (get-buffer-create e-blog-edit-buffer)
-  (set-buffer e-blog-edit-buffer)
+(defun e-blog-setup-edit-buffer (title text)
+  (set-buffer (get-buffer-create e-blog-edit-buffer))
   (let (pos)
     (insert "Title: \n")
     (setq pos (- (point) 1))
@@ -544,9 +533,7 @@ post to."
   (insert text)
   (local-set-key "\C-c\C-c" 'e-blog-post-edit)
   (e-blog-do-markdowns)
-  (setq e-blog-edit-xml-buffer tmp-buffer)
-  (switch-to-buffer e-blog-edit-buffer)
-  (message tmp-buffer))
+  (switch-to-buffer e-blog-edit-buffer))
 
 (defun e-blog-collapse-post-list (button)
   (message "Sorry, collapsing lists is not yet implemented."))
