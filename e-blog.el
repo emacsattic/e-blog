@@ -22,7 +22,8 @@
 ;;; Commentary:
 
 ;; e-blog allows you to post to one or more blogs on Blogger.  You
-;; must have curl <http://curl.haxx.se> to use e-blog.
+;; must have curl <http://curl.haxx.se> to use e-blog.  This
+;; dependency on curl will not exist in the next release.
 
 ;; e-blog: A GNU Emacs interface to Blogger.
 
@@ -50,7 +51,7 @@
 ;; "curl".  This is possible using `open-network-stream' and will
 ;; probably be a goal before the 0.4 release.
 
-;; For now, here is the (probably extremely buggy) e-blog 0.2.
+;; For now, here is e-blog 0.3.
 
 ;; Setup/Usage
 ;; -----------
@@ -63,12 +64,15 @@
 ;; that, from within a single Emacs session, it will only need your
 ;; username and password once.
 
+;; NOTE: In this release, you can also move between `+', blog titles,
+;; and posts by using the TAB key.
+
 ;; e-blog will present you with a buffer allowing you to choose which
-;; blog you want to send a post to.  If you only have one blog, it will
-;; still present you with this buffer so that you have the option of
-;; listing and deleting posts.  Simply move point to the name of the blog
-;; that you want to post to and press <Enter>, or click on the blog title
-;; with button-2.
+;; blog you want to send a post to.  If you only have one blog, it
+;; will still present you with this buffer so that you have the option
+;; of listing and deleting posts.  Simply move point to the name of
+;; the blog that you want to post to and press <Enter>, or click on
+;; the blog title with button-2.
 
 ;; Clicking on the `+' next to a blog title will present you with a list
 ;; of posts for that blog.  Clicking on a post title will present you
@@ -84,18 +88,8 @@
 ;;       (global-set-key "\C-cb" 'e-blog-new-post)
 ;; in my ~/.emacs.
 
-;; Potential Issues
-;; ----------------
-;; e-blog tends to get a little bit confused if there are old e-blog
-;; buffers lying around.  For instance, if one initiated a post and never
-;; actually sent it, buried its buffer, and then asked e-blog to initiate
-;; a new post, e-blog will probably become confused.  If you find this
-;; happening to you, simply delete any old e-blog `post' or `choose'
-;; buffers that may be around and call `e-blog-new-post' again.  This
-;; should be corrected in the next release.
-
 (setq e-blog-name "eblog"
-      e-blog-version "0.2"
+      e-blog-version "0.3"
       e-blog-service "blogger"
       e-blog-get-authinfo-url "https://www.google.com/accounts/ClientLogin"
       e-blog-buffer "*e-blog*"

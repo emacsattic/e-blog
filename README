@@ -24,7 +24,7 @@ Further goals, at the moment, include removing the dependency on
 "curl".  This is possible using `open-network-stream' and will
 probably be a goal before the 0.4 release.
 
-For now, here is the (probably extremely buggy) e-blog 0.2.
+For now, here is e-blog 0.3.
 
 Setup/Usage
 -----------
@@ -37,12 +37,15 @@ will save the authorization code that is returned from Blogger so
 that, from within a single Emacs session, it will only need your
 username and password once.
 
+NOTE: In this release, you can also move between `+', blog titles,
+and posts by using the TAB key.
+
 e-blog will present you with a buffer allowing you to choose which
-blog you want to send a post to.  If you only have one blog, it will
-still present you with this buffer so that you have the option of
-listing and deleting posts.  Simply move point to the name of the blog
-that you want to post to and press <Enter>, or click on the blog title
-with button-2.
+blog you want to send a post to.  If you only have one blog, it
+will still present you with this buffer so that you have the option
+of listing and deleting posts.  Simply move point to the name of
+the blog that you want to post to and press <Enter>, or click on
+the blog title with button-2.
 
 Clicking on the `+' next to a blog title will present you with a list
 of posts for that blog.  Clicking on a post title will present you
@@ -57,16 +60,6 @@ If you intend to use e-blog often, you could bind `e-blog-new-post' to
 a key.  Personally, I have
       (global-set-key "\C-cb" 'e-blog-new-post)
 in my ~/.emacs.
-
-Potential Issues
-----------------
-e-blog tends to get a little bit confused if there are old e-blog
-buffers lying around.  For instance, if one initiated a post and never
-actually sent it, buried its buffer, and then asked e-blog to initiate
-a new post, e-blog will probably become confused.  If you find this
-happening to you, simply delete any old e-blog `post' or `choose'
-buffers that may be around and call `e-blog-new-post' again.  This
-should be corrected in the next release.
 
 Author
 ------
