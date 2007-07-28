@@ -22,8 +22,11 @@
 ;;; Commentary:
 
 ;; e-blog allows you to post to one or more blogs on Blogger.  You
-;; must have curl <http://curl.haxx.se> to use e-blog.  This
-;; dependency on curl will not exist in the next release.
+;; must have curl <http://curl.haxx.se> to use e-blog.  One of the
+;; original goals was to eliminate the need for curl, but upon further
+;; inspection of Emacs native url retrieving functions, I think that
+;; curl is the right tool for the job.  Using native Emacs functions
+;; would actually _increase_ the number of external dependencies.
 
 ;; e-blog: A GNU Emacs interface to Blogger.
 
@@ -157,20 +160,10 @@ stored in the variable `e-blog-auth'."
   "Creates a buffer for writing a blog post."
   (e-blog-check-for-old-post e-blog-post-buffer)
   (set-buffer (get-buffer-create e-blog-post-buffer))
-  (erase-buffer)
-  (let (pos)
-    (insert "Title: \n")
-    (setq pos (- (point) 1))
-    (insert "-------- Post Follows This Line --------\n")
-    (goto-char pos))
-  (add-text-properties 1 7
-		       '(read-only "Please type the title after the colon."
-			 face info-menu-star))
-  (add-text-properties 9 49
-		       '(read-only "Please type your post below this line."
-			 face info-xref-visited))
+  (e-blog-setup-common)
+  (goto-char (point-min))
+  (move-end-of-line nil)
   (local-set-key "\C-c\C-c" 'e-blog-post)
-  (auto-fill-mode 1)
   (switch-to-buffer e-blog-post-buffer))
 
 (defun e-blog-do-markups ()
@@ -198,25 +191,32 @@ send a post to the url `e-blog-post-url' with the resulting xml,
 which is stored in `e-blog-sent-buffer'."
   (interactive)
   (setq e-blog-sent-buffer "*e-blog sent*")
-  (let (title text)
+  (let (title text beg labels)
     (set-buffer e-blog-post-buffer)
     (goto-char (point-min))
-    (search-forward ":")
-    (let (start end)
-      (forward-char 1)
-      (setq start (point))
-      (forward-line)
-      (setq end (point))
-      (setq title (buffer-substring start end)))
-    (let (start)
-      (forward-line)
-      (setq start (point))
-      (e-blog-do-markups)
-      (setq text (buffer-substring start (point-max))))
+    (search-forward ": ")
+    (setq beg (point))
+    (forward-line)
+    (setq title (buffer-substring beg (point)))
+    (search-forward ": ")
+    (setq labels (e-blog-extract-labels))
+    (forward-line 2)
+    (move-beginning-of-line nil)
+    (setq beg (point))
+    (e-blog-do-markups)
+    (setq text (buffer-substring beg (point-max)))
     (get-buffer-create e-blog-sent-buffer)
     (set-buffer e-blog-sent-buffer)
     (insert-string e-blog-post-xml)
     (goto-char (point-min))
+    (search-forward "'>")
+    (if (equal (nth 0 labels) "")
+	()
+      (dolist (label labels)
+	(insert
+	 "<category scheme='http://www.blogger.com/atom/ns#' term='"
+	 label
+	 "'/>")))
     (search-forward "<!-- @@@Title@@@ -->")
     (replace-match title)
     (search-forward "<!-- @@@Text@@@ -->")
@@ -224,7 +224,7 @@ which is stored in `e-blog-sent-buffer'."
     (search-forward "<!-- @@@User Name@@@ -->")
     (replace-match user-full-name)
     (search-forward "<!-- @@@email@@@ -->")
-    (replace-match e-blog-user))
+    (replace-match e-blog-user)
     (set-visited-file-name "/tmp/e-blog-tmp")
     (save-buffer)
     (call-process "curl" nil e-blog-buffer nil
@@ -233,9 +233,9 @@ which is stored in `e-blog-sent-buffer'."
 		  "--header" "Content-Type: application/atom+xml"
 		  "-d" "@/tmp/e-blog-tmp"
 		  e-blog-post-url)
-  (delete-file "/tmp/e-blog-tmp")
-  (kill-buffer "e-blog-tmp")
-  (kill-buffer e-blog-post-buffer))
+    (delete-file "/tmp/e-blog-tmp")
+    (kill-buffer "e-blog-tmp")
+    (kill-buffer e-blog-post-buffer)))
 
 (defun e-blog-parse-bloglist (bloglist)
   "Extracts the titles and post urls for each blog available to
@@ -260,6 +260,20 @@ which is stored in `e-blog-sent-buffer'."
       (search-forward "#post" nil t))
   (setq e-blog-blogs titles))
   (kill-buffer e-blog-tmp-buffer))
+
+(defun e-blog-extract-labels ()
+  (let (label labels beg eol)
+    (setq beg (point)
+	  labels ())
+    (move-end-of-line nil)
+    (setq eol (point))
+    (goto-char beg)
+    (while (search-forward "," eol t)
+      (setq label (buffer-substring beg (- (point) 1)))
+      (add-to-list 'labels label)
+      (setq beg (+ (point) 1)))
+    (add-to-list 'labels (buffer-substring beg eol))
+    labels))
 
 (defun e-blog-kill-current-buffer ()
   (interactive)
@@ -411,11 +425,12 @@ post to."
 (defun e-blog-edit-post (button)
   (let (beg end post-info blog-id post-id
 	text tmp-buffer post-xml title
-	text)
-    (setq post-info (button-get button 'post-info))
-    (setq title (nth 0 post-info))
-    (setq post-id (nth 2 post-info))
-    (setq text (nth 3 post-info))
+	text label labels)
+    (setq post-info (button-get button 'post-info)
+	  title (nth 0 post-info)
+	  post-id (nth 2 post-info)
+	  text (nth 3 post-info)
+	  labels ())
     (set-buffer (get-buffer-create e-blog-tmp-buffer))
     (insert e-blog-all-posts-xml)
     (goto-char (point-min))
@@ -423,18 +438,23 @@ post to."
     (search-backward "<entry>")
     (setq beg (point))
     (search-forward "</entry>")
-    (setq end (point))
-    (setq post-xml (buffer-substring beg end))
+    (setq post-xml (buffer-substring beg (point)))
     (erase-buffer)
     (insert post-xml)
     (goto-char (point-max))
     (search-backward "<title type='text'>")
     (setq beg (point))
     (search-forward "</content>")
-    (setq end (point))
-    (delete-region beg end)
+    (delete-region beg (point))
     (insert "<!-- @@@Title & Content@@@ -->")
-    (e-blog-setup-edit-buffer title text)))
+    (goto-char (point-min))
+    (while (search-forward "term='" nil t)
+      (setq beg (point))
+      (search-forward "'")
+      (setq label (buffer-substring beg (- (point) 1)))
+      (message label)
+      (add-to-list 'labels label))
+    (e-blog-setup-edit-buffer title text labels)))
 
 (defun e-blog-do-markdowns ()
   (let (beg-text beg end replacements)
@@ -465,37 +485,52 @@ post to."
 
 (defun e-blog-post-edit ()
   (interactive)
-  (let (title text)
+  (let (title text beg labels)
     (set-buffer e-blog-edit-buffer)
     (goto-char (point-min))
-    (search-forward ":")
-    (let (start end)
-      (forward-char 1)
-      (setq start (point))
-      (forward-line)
-      (setq end (point))
-      (setq title (buffer-substring start end)))
-    (let (start)
-      (forward-line)
-      (setq start (point))
-      (e-blog-do-markups)
-      (setq text (buffer-substring start (point-max))))
-    (e-blog-edit-formulate-xml title text)
+    (search-forward ": ")
+    (setq beg (point))
+    (forward-line)
+    (setq title (buffer-substring beg (point)))
+    (search-forward ": ")
+    (setq labels (e-blog-extract-labels))
+    (forward-line 2)
+    (setq beg (point))
+    (e-blog-do-markups)
+    (setq text (buffer-substring beg (point-max)))
+    (e-blog-edit-formulate-xml title text labels)
     (call-process "curl" nil e-blog-buffer nil
 		  "--header"
 		  e-blog-auth
 		  "--header" "Content-Type: application/atom+xml"
 		  "-X" "PUT" "-d" "@/tmp/e-blog-tmp"
 		  e-blog-edit-url)
-  (delete-file "/tmp/e-blog-tmp")
-  (kill-buffer e-blog-edit-buffer)
-  (kill-buffer e-blog-choose-buffer)
-  (kill-buffer "e-blog-tmp")
-  (message "Sending request for edit... Done." )))
+    (delete-file "/tmp/e-blog-tmp")
+    (kill-buffer e-blog-edit-buffer)
+    (kill-buffer e-blog-choose-buffer)
+    (kill-buffer "e-blog-tmp")
+    (message "Sending request for edit... Done." )))
 
-(defun e-blog-edit-formulate-xml (title text)
+(defun e-blog-edit-formulate-xml (title text labels)
     (set-buffer e-blog-tmp-buffer)
     (goto-char (point-min))
+    (let (beg)
+      (while (search-forward
+	      "<category scheme='http://www.blogger.com/atom/ns#' term='"
+	      nil t)
+	(replace-match "")
+	(setq beg (point))
+	(search-forward "'/>")
+	(delete-region beg (point))))
+    (goto-char (point-min))
+    (search-forward "</updated>")
+    (if (equal (nth 0 labels) "")
+	()
+      (dolist (label labels)
+	(insert
+	 "<category scheme='http://www.blogger.com/atom/ns#' term='"
+	 label
+	 "'/>")))
     (search-forward "<!-- @@@Title & Content@@@ -->")
     (replace-match
      (concat
@@ -520,28 +555,28 @@ post to."
     (save-buffer)
     (message "Sending request for edit..."))
 
-(defun e-blog-setup-edit-buffer (title text)
+(defun e-blog-setup-edit-buffer (title text labels)
   (e-blog-check-for-old-post e-blog-edit-buffer)
   (set-buffer (get-buffer-create e-blog-edit-buffer))
-  (let (pos)
-    (insert "Title: \n")
-    (setq pos (- (point) 1))
-    (insert "-------- Post Follows This Line --------\n")
-    (goto-char pos))
-  (add-text-properties 1 7
-		       '(read-only "Please the title after the colon."
-			 face info-menu-star))
-  (add-text-properties 9 49
-		       '(read-only "Please type your post below this line."
-			 face info-xref-visited))
+  (e-blog-setup-common)
   (goto-char (point-min))
   (move-end-of-line nil)
   (insert title)
-  (forward-line 2)
+  (forward-line)
+  (move-end-of-line nil)
+  (let (num-labels counter)
+    (setq counter (length labels)
+	  num-labels counter)
+    (dolist (label labels)
+      (setq counter (- counter 1))
+      (insert label)
+      (if (> counter 0)
+	  (insert ", ")
+	())))
+  (goto-char (point-max))
   (insert text)
   (local-set-key "\C-c\C-c" 'e-blog-post-edit)
   (e-blog-do-markdowns)
-  (auto-fill-mode 1)
   (switch-to-buffer e-blog-edit-buffer))
 
 (defun e-blog-collapse-post-list (button)
@@ -572,6 +607,24 @@ post to."
       (insert-text-button "-"
 			  'action 'e-blog-collapse-post-list
 			  'face 'custom-state))))
+
+(defun e-blog-setup-common ()
+  (let (t-string l-string p-string all faces cur-face counter)
+    (setq t-string "Title: \n"
+	  l-string "Labels (separated by commas): \n"
+	  p-string "-------- Post Follows This Line -------- \n"
+	  all (list t-string l-string p-string)
+	  faces '(info-menu-star custom-state info-xref-visited)
+	  counter 0)
+    (insert t-string l-string p-string)
+    (goto-char (point-min))
+    (dolist (string all)
+      (add-text-properties (point) (- (+ (point) (length string)) 2)
+			   (list 'read-only "Please type your entries after the colored text."
+				 'face (nth counter faces)))
+      (forward-line)
+      (setq counter (+ 1 counter)))
+      (auto-fill-mode 1)))
 
 (defun e-blog-set-kill-buffer (name)
   (set-buffer name)
