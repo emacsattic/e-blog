@@ -129,7 +129,9 @@ communication with the Gdata API."
 		  all e-blog-get-authinfo-url)))
 
 (defun e-blog-get-authinfo ()
-  "Extracts the authorization string obtained from Gdata's ClientLogin from e-blog's logging buffer, which has the name `e-blog-buffer'."
+  "Extracts the authorization string obtained from Gdata's
+ClientLogin from e-blog's logging buffer, which has the name
+`e-blog-buffer'."
   (set-buffer e-blog-buffer)
   (if (search-backward "Auth=" nil t)
       ()
@@ -159,6 +161,7 @@ stored in the variable `e-blog-auth'."
 
 (defun e-blog-setup-post-buffer ()
   "Creates a buffer for writing a blog post."
+  (e-blog-check-for-old-post e-blog-post-buffer)
   (set-buffer (get-buffer-create e-blog-post-buffer))
   (erase-buffer)
   (let (pos)
@@ -417,7 +420,6 @@ post to."
 	text)
     (setq post-info (button-get button 'post-info))
     (setq title (nth 0 post-info))
-;;    (setq blog-id (nth 1 post-info))
     (setq post-id (nth 2 post-info))
     (setq text (nth 3 post-info))
     (set-buffer (get-buffer-create e-blog-tmp-buffer))
@@ -525,6 +527,7 @@ post to."
     (message "Sending request for edit..."))
 
 (defun e-blog-setup-edit-buffer (title text)
+  (e-blog-check-for-old-post e-blog-edit-buffer)
   (set-buffer (get-buffer-create e-blog-edit-buffer))
   (let (pos)
     (insert "Title: \n")
@@ -576,6 +579,16 @@ post to."
 			  'action 'e-blog-collapse-post-list
 			  'face 'custom-state))))
 
+(defun e-blog-set-kill-buffer (name)
+  (set-buffer name)
+  (kill-buffer (current-buffer)))
+
+(defun e-blog-check-for-old-post (name)
+  (condition-case nil
+      (e-blog-set-kill-buffer name)
+    (error 
+     nil)))
+
 (defun e-blog-set-post-blog (button)
   "The callback for the buttons created in
 `e-blog-setup-choose-buffer'.  Finds the post url associated with
@@ -583,7 +596,6 @@ a blog title in the list contained in `e-blog-blogs' and sets
 `e-blog-post-url' accordingly."
   (message "Will post this article to `%s'."
 	   (button-label button))
-;; TODO: make following dolist loop a defun in it's own right.
   (dolist (pair e-blog-blogs)
     (if (equal (button-label button) (car pair))
 	(setq e-blog-post-url (nth 1 pair))))
