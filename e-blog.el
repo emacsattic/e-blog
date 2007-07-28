@@ -103,7 +103,8 @@
       e-blog-choose-buffer "*e-blog choose*"
       e-blog-edit-buffer "*e-blog edit*"
       e-blog-tmp-buffer "*e-blog tmp*"
-      e-blog-auth nil)
+      e-blog-auth nil
+      e-blog-all-posts-xml nil)
 
 (defun e-blog-get-credentials ()
   "Gets username and password via the minibuffer."
@@ -263,13 +264,21 @@ which is stored in `e-blog-sent-buffer'."
   (setq e-blog-blogs titles))
   (kill-buffer e-blog-tmp-buffer))
 
+(defun e-blog-kill-current-buffer ()
+  (interactive)
+  (kill-buffer (current-buffer)))
+
 (defun e-blog-setup-choose-buffer ()
   "Used when `e-blog-user' has more than one blog available for
 posting.  Sets up a buffer that allows choosing which blog to
 post to."
+  ;; making `e-blog-all-posts-xml' keeps this variable from expanding
+  ;; infinitely since it is appended to when editing posts.
+  (setq e-blog-all-posts-xml nil)
   (set-buffer (get-buffer-create e-blog-choose-buffer))
   (erase-buffer)
   (local-set-key "\t" 'e-blog-forward-button)
+  (local-set-key "q" 'e-blog-kill-current-buffer)
   (insert-string
    (format "%d blogs found for %s:\n\n"
 	   (length e-blog-blogs) e-blog-user))
@@ -354,6 +363,14 @@ post to."
 	(setq post-id (buffer-substring beg (- (point) 1)))
 	(setq post (list post-title blog-id post-id text))
 	(add-to-list 'posts post))
+      ;; inserting the current value of e-blog-all-posts-xml should
+      ;; make editing posts to a blog other than the one that was most
+      ;; recently expanded possible.
+      (save-excursion
+	(goto-char (point-min))
+	(if e-blog-all-posts-xml
+	    (insert e-blog-all-posts-xml)
+	  ()))
       (setq e-blog-all-posts-xml
 	    (buffer-substring (point-min) (point-max)))
       (setq e-blog-post-list posts)))
@@ -400,6 +417,7 @@ post to."
 	text)
     (setq post-info (button-get button 'post-info))
     (setq title (nth 0 post-info))
+;;    (setq blog-id (nth 1 post-info))
     (setq post-id (nth 2 post-info))
     (setq text (nth 3 post-info))
     (set-buffer (get-buffer-create e-blog-tmp-buffer))
