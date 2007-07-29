@@ -271,7 +271,7 @@ which is stored in `e-blog-sent-buffer'."
     (while (search-forward "," eol t)
       (setq label (buffer-substring beg (- (point) 1)))
       (add-to-list 'labels label)
-      (setq beg (+ (point) 1)))
+      (setq beg (point)))
     (add-to-list 'labels (buffer-substring beg eol))
     labels))
 
