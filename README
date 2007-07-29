@@ -1,11 +1,21 @@
-e-blog: A GNU Emacs interface to Blogger.
+e-blog.el - a GNU Emacs interface to Blogger
+Copyright (C)  2007 Mikey Coulson
 
 Introduction
-------------
-e-blog is a simple interface for GNU Emacs to post, edit, and delete
-Blogger posts.  One might ask, "Why another blogging interface to
-Emacs?"  The short answer is that I couldn't find an interface that
-worked (or, probably more accurately, that I could _get_ to work).
+------------ 
+e-blog allows you to post, edit, label and delete posts on one or more
+blogs on Blogger.  You must have curl <http://curl.haxx.se> to use
+e-blog.  One of the original goals was to eliminate the need for curl,
+but upon further inspection of Emacs native url retrieving functions,
+I think that curl is the right tool for the job.  Using native Emacs
+functions would actually _increase_ the number of external
+dependencies.
+
+History
+-------
+One might ask, "Why another blogging interface to Emacs?"  The short
+answer is that I couldn't find an interface that worked (or, probably
+more accurately, that I could _get_ to work).
 
 So, I set out to write one of my own...
 
@@ -20,11 +30,16 @@ I decided that if I was going to go that far, I may as well include
 the other features (updating, deleting) as well.  These features are
 now included.
 
-Further goals, at the moment, include removing the dependency on
-"curl".  This is possible using `open-network-stream' and will
-probably be a goal before the 0.4 release.
-
-For now, here is e-blog 0.3.
+A few days after registering e-blog with Google Code, an issue was
+registered for allowing manipulation of labels, which is also now an
+included feature.  Something interesting to note about labels is that
+there is no provision in the API for them.  It is not difficult to add
+labels using the API, it is simply undocumented.  For the most part,
+they will work as expected.  The only thing that CANNOT be done with
+labels using e-blog is removing ALL labels from a post that previously
+had labels.  I have verified that e-blog is submitting XML properly in
+such a case, but one label (the last label added or first of multiple
+labels) will remain with the post regardless.
 
 Setup/Usage
 -----------
@@ -56,6 +71,12 @@ Clicking on the `[X]' behind the title of a post will DELETE the post
 preceding it.  e-blog DOES NOT ask for confirmation before deleting
 the post.  This may change in the future.
 
+While posting or editing, you may specify any number of labels (or
+none) by typing a comma separated list of labels on the appropriate
+line in the post/edit buffer.  If you are editing a post that has
+labels, you may change or delete them as usual.  If you remove them
+all, one will remain anyway, as noted above.
+
 If you intend to use e-blog often, you could bind `e-blog-new-post' to
 a key.  Personally, I have
       (global-set-key "\C-cb" 'e-blog-new-post)
@@ -65,3 +86,17 @@ Author
 ------
 Mikey Coulson
 <miketcoulson@gmail.com>
+
+Bugs/Issues/Other
+-----------------
+If you have an issue or think you have found a bug in e-blog, you are
+welcome to use the `Issues' page at e-blog's home on
+<http://e-blog.googlecode.com>.
+
+Even better is to skip filing an issue and e-mail me a patch that fixes
+said issue/bug.
+
+If you haven't found an issue or bug, but have been using e-blog, drop
+me a line telling me how you use it, on what blog, etc.  I would like
+to hear from you, and you will probably gain a blog subscriber by
+doing so.

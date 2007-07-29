@@ -50,10 +50,6 @@
 ;; the other features (updating, deleting) as well.  These features are
 ;; now included.
 
-;; Further goals, at the moment, include removing the dependency on
-;; "curl".  This is possible using `open-network-stream' and will
-;; probably be a goal before the 0.4 release.
-
 ;; For now, here is e-blog 0.3.
 
 ;; Setup/Usage
