@@ -283,8 +283,8 @@ which is stored in `e-blog-sent-buffer'."
   "Used when `e-blog-user' has more than one blog available for
 posting.  Sets up a buffer that allows choosing which blog to
 post to."
-  ;; making `e-blog-all-posts-xml' keeps this variable from expanding
-  ;; infinitely since it is appended to when editing posts.
+  ;; making `e-blog-all-posts-xml' nil here keeps this variable from
+  ;; expanding infinitely since it is appended to when editing posts.
   (setq e-blog-all-posts-xml nil)
   (set-buffer (get-buffer-create e-blog-choose-buffer))
   (erase-buffer)
@@ -368,7 +368,8 @@ post to."
 	(setq beg (point))
 	(search-forward "</content>")
 	(setq text (buffer-substring beg (- (point) 10)))
-	(search-forward "postID=")
+	(search-forward "rel='self'")
+	(search-forward "default/")
 	(setq beg (point))
 	(search-forward "'")
 	(setq post-id (buffer-substring beg (- (point) 1)))
