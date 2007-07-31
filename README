@@ -48,7 +48,7 @@ There shouldn't be any setup, really.  It should be as simple as:
       (e-blog-new-post)
 
 e-blog will then ask you for your Blogger username and password.  It
-will save the authorization code that is returned from Blogger so
+will save the authorization token that is returned from Blogger so
 that, from within a single Emacs session, it will only need your
 username and password once.
 
