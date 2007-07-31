@@ -68,8 +68,7 @@ with a buffer for editing that post.  C-c C-c in this new buffer will
 send the updated post to blogger.
 
 Clicking on the `[X]' behind the title of a post will DELETE the post
-preceding it.  e-blog DOES NOT ask for confirmation before deleting
-the post.  This may change in the future.
+preceding it.  e-blog asks for confirmation before deleting the post.
 
 While posting or editing, you may specify any number of labels (or
 none) by typing a comma separated list of labels on the appropriate
