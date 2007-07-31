@@ -325,11 +325,16 @@ post to."
 			  'post-info post)
       (insert " [")
       (insert-text-button "X"
-			  'action 'e-blog-delete-post
+			  'action 'e-blog-confirm-delete
 			  'face 'info-menu-star
 			  'post-info post)
       (insert "]")
       (insert "\n"))))
+
+(defun e-blog-confirm-delete (button)
+  (if (y-or-n-p "Are you sure you want to delete this post? ")
+      (e-blog-delete-post button)
+    (message "Post not deleted.")))
 
 (defun e-blog-delete-post (button)
   (let (beg url post-id blog-id post-info)
