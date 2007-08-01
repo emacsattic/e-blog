@@ -1,0 +1,380 @@
+(require 'xml)
+
+(setq e-blog-name "eblog"
+      e-blog-version "0.4"
+      e-blog-service "blogger"
+      e-blog-fetch-authinfo-url "https://www.google.com/accounts/ClientLogin"
+      e-blog-fetch-bloglist-url "http://www.blogger.com/feeds/default/blogs"
+      e-blog-post-url-rel "http://schemas.google.com/g/2005#post"
+      e-blog-buffer "*e-blog*"
+      e-blog-post-buffer "*e-blog post*"
+      e-blog-choose-buffer "*e-blog choose*"
+      e-blog-edit-buffer "*e-blog edit "
+      e-blog-tmp-buffer "*e-blog tmp*"
+      e-blog-auth nil)
+
+(defun e-blog-get-credentials ()
+  "Gets username and password via the minibuffer."
+  (setq e-blog-user (read-from-minibuffer "Username: ")
+	e-blog-passwd (read-passwd "Password: ")))
+
+(defun e-blog-fetch-auth ()
+  "Calls curl to request an authorization string for further
+communication with the Gdata API."
+  (e-blog-get-credentials)
+  (let (switch common user pass source service)
+    (setq switch "-d"
+	  ampersand "\&"
+	  user (concat "Email=" e-blog-user)
+	  pass (concat "Passwd=" e-blog-passwd)
+	  source (concat "source=" e-blog-name "-" e-blog-name "-" e-blog-version)
+	  service (concat "service=" e-blog-service)
+	  all (concat switch user ampersand pass ampersand
+		      source ampersand service))
+    (call-process "curl" nil e-blog-buffer nil
+		  "--stderr" "/dev/null"
+		  all e-blog-fetch-authinfo-url)))
+
+(defun e-blog-check-authinfo ()
+  (condition-case nil 
+      (e-blog-extract-authinfo)
+    (error
+     (message "No authorization token was received.
+Perhaps you mistyped your username or password."))))
+
+(defun e-blog-extract-authinfo ()
+  (set-buffer e-blog-buffer)
+  (let (beg)
+    (search-backward "Auth=")
+    (setq beg (+ (point) 5))
+    (move-end-of-line 1)
+    (setq e-blog-auth
+	  (concat
+	   "Authorization: GoogleLogin auth="
+	   (buffer-substring beg (point))))
+    (erase-buffer)))
+
+(defun e-blog-fetch-bloglist ()
+  (let (feed)
+    (set-buffer e-blog-buffer)
+    (erase-buffer)
+    (message "Requesting list of blogs...")
+    (call-process "curl" nil e-blog-buffer nil
+		  "--stderr" "/dev/null"
+		  "--header"
+		  e-blog-auth
+		  e-blog-fetch-bloglist-url)
+    (setq feed (buffer-substring (point-min) (point-max)))
+    (message "Requesting list of blogs... Done.")
+    feed))
+
+(defun e-blog-kill-current-buffer ()
+  (interactive)
+  (kill-buffer (current-buffer)))
+
+(defun e-blog-forward-button ()
+  (interactive)
+  (forward-button 1 t))
+
+(defun e-blog-setup-choose-buffer (feed)
+  (set-buffer (get-buffer-create e-blog-choose-buffer))
+  (erase-buffer)
+  (insert-string
+   (format "%d blogs found for %s:\n\n"
+	   (length (e-blog-get-titles feed)) e-blog-user))
+  (dolist (title (e-blog-get-titles feed))
+    (insert-string "\t")
+    (insert-text-button
+     "+"
+     'action 'e-blog-list-posts
+     'face 'custom-state
+     'title title
+     'feed feed)
+    (insert " ")
+    (insert-text-button
+     title
+     'action 'e-blog-set-post-blog
+     'face 'custom-link)
+    (insert-string "\n"))
+  (insert-string "\nSelect which blog you would like to post to.")
+  (local-set-key "\t" 'e-blog-forward-button)
+  (local-set-key "q" 'e-blog-kill-current-buffer)
+  (goto-char (point-min))
+  (switch-to-buffer e-blog-choose-buffer))
+
+(defun e-blog-fetch-blog-feed (url)
+  (let (string)
+    (save-excursion
+      (set-buffer (get-buffer-create e-blog-tmp-buffer))
+      (erase-buffer)
+      (message "Requesting a list of posts...")
+      (call-process "curl" nil e-blog-tmp-buffer nil
+		    "--stderr" "/dev/null"
+		    "--header"
+		    e-blog-auth
+		    url)
+      (setq string (buffer-substring (point-min) (point-max))))
+    (message "Requesting a list of posts... Done.")
+    string))
+
+(defun e-blog-expanded-to-collapsed ()
+  (save-excursion
+    (delete-char 1)
+    (insert-text-button "+"
+			'action 'e-blog-expand-post-list
+			'face 'custom-state)))
+
+(defun e-blog-collapsed-to-expanded ()
+  (save-excursion
+    (delete-char 1)
+    (insert-text-button "-"
+			'action 'e-blog-collapse-post-list
+			'face 'custom-state)))
+
+(defun e-blog-list-posts (button)
+  (let (blog-title user-feed blog-feed xml current-entry)
+    (setq blog-title (button-get button 'title)
+	  user-feed (button-get button 'feed))
+    (setq xml (e-blog-fetch-blog-feed
+	       (e-blog-get-post-url blog-title user-feed)))
+    (setq blog-feed (e-blog-parse-xml xml))
+    (save-excursion
+      (move-end-of-line 1)
+      (insert "\n")
+      (dolist (title (e-blog-get-titles blog-feed))
+	(setq current-entry
+	      (e-blog-get-entry title blog-feed))
+	(insert "\t    * ")
+	(insert-text-button title
+			    'action 'e-blog-edit-post
+			    'face 'dired-warning
+			    'entry current-entry)
+	(insert " [")
+	(insert-text-button "X"
+			    'action 'e-blog-confirm-delete
+			    'face 'info-menu-star
+			    'entry current-entry)
+	(insert "]")
+	(insert "\n"))))
+  (e-blog-collapsed-to-expanded))
+
+(defun e-blog-get-edit-url (entry)
+  (let (edit-url)
+    (setq edit-url
+	  (nth 1 (assoc "edit" (e-blog-get-links entry))))
+    edit-url))
+
+(defun e-blog-insert-labels (labels)
+  (let (num-labels counter)
+    (setq counter (length labels)
+	  num-labels counter)
+    (dolist (label labels)
+      (setq counter (- counter 1))
+      (insert label)
+      (if (> counter 0)
+	  (insert ", ")
+	()))))
+
+(defun e-blog-setup-edit-buffer (title labels content edit-url)
+  (let (beg-narrow beg-content)
+  (set-buffer (get-buffer-create
+	       (concat e-blog-edit-buffer title "*")))
+  (e-blog-setup-common)
+  (goto-char (point-min))
+  (move-end-of-line 1)
+  (insert edit-url)
+  (forward-line 1)
+  (setq beg-narrow (point))
+  (move-end-of-line 1)
+  (insert title)
+  (forward-line 1)
+  (move-end-of-line 1)
+  (e-blog-insert-labels labels)
+  (goto-char (point-max))
+  (insert content)
+  (e-blog-do-markdowns)
+  (narrow-to-region beg-narrow (point-max))
+  (local-set-key "\C-c\C-c" 'e-blog-extract-for-edit)
+  (switch-to-buffer (concat e-blog-edit-buffer title "*"))))
+
+(defun e-blog-extract-common ()
+  (let (beg title content labels edit-url)
+    (widen)
+    (goto-char (point-min))
+    (search-forward ": ")
+    (setq beg (point))
+    (forward-line)
+    (setq edit-url (buffer-substring beg (point)))
+    (search-forward ": ")
+    (setq beg (point))
+    (forward-line)
+    (setq title (buffer-substring beg (point)))
+    (search-forward ": ")
+    (setq labels (e-blog-extract-labels))
+    (forward-line 2)
+    (setq beg (point))
+    (e-blog-do-markups)
+    (setq content (buffer-substring beg (point-max)))
+    (list title content labels edit-url)))
+    
+(defun e-blog-extract-for-edit ()
+  (interactive)
+  (e-blog-post-edit (e-blog-extract-common)))
+
+(defun e-blog-extract-for-post ()
+  (e-blog-post (e-blog-extract-common)))
+
+(defun e-blog-extract-labels ()
+  (let (label labels beg eol)
+    (setq beg (point)
+	  labels ())
+    (move-end-of-line nil)
+    (setq eol (point))
+    (goto-char beg)
+    (while (search-forward "," eol t)
+      (setq label (buffer-substring beg (- (point) 1)))
+      (add-to-list 'labels label)
+      (setq beg (point)))
+    (add-to-list 'labels (buffer-substring beg eol))
+    labels))
+
+(defun e-blog-do-markdowns ()
+  (let (beg-text beg end replacements)
+    (move-beginning-of-line nil)
+    (setq beg-text (point))
+    (setq replacements
+	  '(("&lt;" "<")
+	    ("&gt;" ">")
+	    ("<p>" "")
+	    ("</p>" "\n\n")
+	    ("<div xmlns='http://www.w3.org/1999/xhtml'>" "")
+	    ("</div>" "")
+	    ("<br />" "")))
+    (dolist (list replacements)
+      (goto-char beg-text)
+      (while (search-forward (car list) nil t)
+	(replace-match (nth 1 list))))
+    (goto-char (point-max))
+    (forward-line -2)
+    (move-end-of-line nil)
+    (delete-region (point) (point-max))))
+
+(defun e-blog-edit-post (button)
+  (let (entry)
+    (setq entry (button-get button 'entry))
+    (e-blog-setup-edit-buffer
+     (button-label button)
+     (e-blog-get-labels entry)
+     (e-blog-get-content entry)
+     (e-blog-get-edit-url entry))))
+
+(defun e-blog-setup-common ()
+  (let (u-string t-string l-string p-string all faces cur-face counter)
+    (setq u-string "Url: \n"
+	  t-string "Title: \n"
+	  l-string "Labels (separated by commas): \n"
+	  p-string "-------- Post Follows This Line -------- \n"
+	  all (list u-string t-string l-string p-string)
+	  faces '(dired-warning info-menu-star custom-state info-xref-visited)
+	  counter 0)
+    (insert u-string t-string l-string p-string)
+    (goto-char (point-min))
+    (dolist (string all)
+      (add-text-properties (point) (- (+ (point) (length string)) 2)
+			   (list 'read-only "Please type your entries after the colored text."
+				 'face (nth counter faces)))
+      (forward-line)
+      (setq counter (+ 1 counter)))
+      (auto-fill-mode 1)))
+
+(defun e-blog-new-post ()
+  "Initializes e-blog."
+  (interactive)
+  (if e-blog-auth
+      (e-blog-choose)
+    (e-blog-do-auth)))
+
+(defun e-blog-do-auth ()
+  "Calls the functions necessary for communicating with Gdata."
+  (e-blog-fetch-auth)
+  (if (e-blog-check-authinfo)
+      (e-blog-choose)))
+
+(defun e-blog-choose ()
+  (e-blog-setup-choose-buffer (e-blog-parse-xml (e-blog-fetch-bloglist))))
+
+(defun e-blog-parse-xml (string)
+  (let (parsed)
+    (save-excursion
+      (set-buffer (get-buffer-create e-blog-tmp-buffer))
+      (erase-buffer)
+      (insert string)
+      (setq parsed (xml-parse-region (point-min) (point-max)))
+      parsed)))
+
+(defun e-blog-get-titles (feed)
+  (let (titles)
+    (setq titles ())
+    (dolist (entry (e-blog-get-entries feed))
+      (add-to-list 'titles
+		   (e-blog-get-title entry)))
+    titles))
+
+(defun e-blog-get-entries (feed)
+  (let (entries)
+    (setq entries (xml-get-children (xml-node-name feed) 'entry))
+    entries))
+
+(defun e-blog-get-title (entry)
+  (let (title-tag title)
+    (setq title-tag
+	  (xml-get-children entry 'title))
+    (setq title
+	  (nth 0
+	       (xml-node-children
+		(xml-node-name title-tag))))
+    title))
+
+(defun e-blog-get-post-url (title feed)
+  (let (post-url links)
+    (dolist (entry (e-blog-get-entries feed))
+      (if (equal (e-blog-get-title entry) title)
+	(setq post-url
+	      (nth 1 (assoc e-blog-post-url-rel
+			    (e-blog-get-links entry))))))
+    post-url))
+
+(defun e-blog-get-links (entry)
+  (let (links type-link)
+    (dolist (link (xml-get-children entry 'link))
+      (setq type-link
+	    (list (xml-get-attribute link 'rel)
+		  (xml-get-attribute link 'href)))
+      (add-to-list 'links
+		   type-link))
+    links))
+
+(defun e-blog-get-entry (title feed)
+  (let (matching-entry)
+  (dolist (entry (e-blog-get-entries feed))
+    (if (equal (e-blog-get-title entry) title)
+	(setq matching-entry entry)))
+  matching-entry))
+
+(defun e-blog-get-labels (entry)
+  (let (post-labels)
+    (setq post-labels ())
+    (dolist (label (xml-get-children entry 'category))
+      (add-to-list 'post-labels
+		   (xml-get-attribute label 'term)))
+    post-labels))
+
+(defun e-blog-get-content (entry)
+  (let (content)
+    (setq content
+	  (nth 0
+	       (xml-node-children
+		(xml-node-name
+		 (xml-get-children entry 'content)))))
+    content))
+
