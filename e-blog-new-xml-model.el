@@ -1,5 +1,9 @@
 (require 'xml)
 
+(defvar e-blog-display-url nil
+  "If non-nil, e-blog will display the post/edit url in post/edit
+buffers.")
+
 (setq e-blog-name "eblog"
       e-blog-version "0.4"
       e-blog-service "blogger"
@@ -193,18 +197,20 @@ Perhaps you mistyped your username or password."))))
   (goto-char (point-max))
   (insert content)
   (e-blog-do-markdowns)
-  (narrow-to-region beg-narrow (point-max))
+  (if e-blog-display-url
+      ()
+    (narrow-to-region beg-narrow (point-max)))
   (local-set-key "\C-c\C-c" 'e-blog-extract-for-edit)
   (switch-to-buffer (concat e-blog-edit-buffer title "*"))))
 
 (defun e-blog-extract-common ()
-  (let (beg title content labels edit-url)
+  (let (beg title content labels url)
     (widen)
     (goto-char (point-min))
     (search-forward ": ")
     (setq beg (point))
     (forward-line)
-    (setq edit-url (buffer-substring beg (point)))
+    (setq url (buffer-substring beg (point)))
     (search-forward ": ")
     (setq beg (point))
     (forward-line)
@@ -215,8 +221,41 @@ Perhaps you mistyped your username or password."))))
     (setq beg (point))
     (e-blog-do-markups)
     (setq content (buffer-substring beg (point-max)))
-    (list title content labels edit-url)))
-    
+    (list title content labels url)))
+
+(defun e-blog-do-markups ()
+  "Prepends `<p>' to the beginning of each paragraph.  Ends each
+paragraph with `</p>'."
+  (interactive)
+  (let (replacements beg-text)
+    (setq replacements
+	  '(("\n\n" "</p><p>")
+	    ("\n" " ")
+	    ("</p><p>" "</p>\n<p>")))
+    (setq beg-text (point))
+    (insert-string "<p>")
+    (dolist (list replacements)
+      (while (search-forward (car list) nil t)
+	(replace-match (nth 1 list)))
+      (goto-char beg-text))
+    (goto-char (point-max))
+    (insert-string "</p>")))
+
+(defun e-blog-post-edit (prop-list)
+  (let (title content labels url entry)
+    (setq title (nth 0 prop-list)
+	  content (nth 1 prop-list)
+	  labels (nth 2 prop-list)
+	  url (nth 3 prop-list))
+    (setq entry
+	  (e-blog-parse-xml
+	   (e-blog-fetch-blog-feed url)))
+
+    (e-blog-change-title entry title)
+    (e-blog-change-content entry content)
+    (e-blog-change-labels entry labels)
+    ))
+
 (defun e-blog-extract-for-edit ()
   (interactive)
   (e-blog-post-edit (e-blog-extract-common)))
@@ -378,3 +417,38 @@ Perhaps you mistyped your username or password."))))
 		 (xml-get-children entry 'content)))))
     content))
 
+(defun e-blog-change-title (entry title)
+  (setcar (xml-node-children
+	   (xml-node-name
+	    (xml-get-children
+	     (xml-node-name entry)
+	     'title))) title))
+
+(defun e-blog-change-content (entry content)
+  (setcar (xml-node-children
+	   (xml-node-name
+	    (xml-get-children
+	     (xml-node-name entry)
+	     'content))) content))
+
+(defun e-blog-change-labels (entry labels)
+  "This doesn't work yet."
+  (let (new-node tmp-label)
+    (setq new-node ())
+    (dolist (label labels)
+      (setq tmp-label '(category ((scheme . "http://www.blogger.com/atom/ns#") (term . label))))
+      (setcdr
+       (nth 1
+	    (nth 0
+		 (cdr tmp-label))) label))
+    (add-to-list 'new-node tmp-label)
+    (setq number-old-labels (length
+			     (xml-get-children
+			      (xml-node-name entry) 'category)))
+    (setcdr (xml-get-children
+	     (xml-node-name entry)
+	     'category)
+	    new-node)
+    (setcar (xml-get-children
+	     (xml-node-name entry)
+	     'category) nil)))
