@@ -17,6 +17,12 @@ buffers.")
       e-blog-tmp-buffer "*e-blog tmp*"
       e-blog-auth nil)
 
+(defface e-blog-url '((t :foreground "orange")) "Face used by e-blog for url line.")
+(defface e-blog-title '((t :foreground "red")) "Face used by e-blog for title line.")
+(defface e-blog-label '((t :foreground "green")) "Face used by e-blog for label line.")
+(defface e-blog-post '((t :foreground "purple")) "Face used by e-blog for post-separator line.")
+(defface e-blog-blog '((t (:foreground "cyan1" :underline t))) "Face used by e-blog for blog titles.")
+
 (defun e-blog-get-credentials ()
   "Gets username and password via the minibuffer."
   (setq e-blog-user (read-from-minibuffer "Username: ")
@@ -91,14 +97,14 @@ Perhaps you mistyped your username or password."))))
     (insert-text-button
      "+"
      'action 'e-blog-list-posts
-     'face 'custom-state
+     'face 'e-blog-label
      'title title
      'feed feed)
     (insert " ")
     (insert-text-button
      title
      'action 'e-blog-set-post-blog
-     'face 'custom-link)
+     'face 'e-blog-blog)
     (insert-string "\n"))
   (insert-string "\nSelect which blog you would like to post to.")
   (local-set-key "\t" 'e-blog-forward-button)
@@ -118,7 +124,7 @@ Perhaps you mistyped your username or password."))))
 		    e-blog-auth
 		    url)
       (setq string (buffer-substring (point-min) (point-max))))
-    (message "Requesting a list of posts... Done.")
+    (message "Requesting feed... Done.")
     string))
 
 (defun e-blog-expanded-to-collapsed ()
@@ -151,12 +157,12 @@ Perhaps you mistyped your username or password."))))
 	(insert "\t    * ")
 	(insert-text-button title
 			    'action 'e-blog-edit-post
-			    'face 'dired-warning
+			    'face 'e-blog-url
 			    'entry current-entry)
 	(insert " [")
 	(insert-text-button "X"
 			    'action 'e-blog-confirm-delete
-			    'face 'info-menu-star
+			    'face 'e-blog-title
 			    'entry current-entry)
 	(insert "]")
 	(insert "\n"))))
@@ -204,7 +210,7 @@ Perhaps you mistyped your username or password."))))
   (switch-to-buffer (concat e-blog-edit-buffer title "*"))))
 
 (defun e-blog-extract-common ()
-  (let (beg title content labels url)
+  (let (beg title content labels url post-info)
     (widen)
     (goto-char (point-min))
     (search-forward ": ")
@@ -221,7 +227,8 @@ Perhaps you mistyped your username or password."))))
     (setq beg (point))
     (e-blog-do-markups)
     (setq content (buffer-substring beg (point-max)))
-    (list title content labels url)))
+    (setq post-info (list title content labels url))
+    post-info))
 
 (defun e-blog-do-markups ()
   "Prepends `<p>' to the beginning of each paragraph.  Ends each
@@ -247,14 +254,20 @@ paragraph with `</p>'."
 	  content (nth 1 prop-list)
 	  labels (nth 2 prop-list)
 	  url (nth 3 prop-list))
+    (message "%s, %s." title url)
     (setq entry
-	  (e-blog-parse-xml
-	   (e-blog-fetch-blog-feed url)))
+	 (xml-node-name (e-blog-parse-xml
+	   (e-blog-fetch-blog-feed url))))
 
     (e-blog-change-title entry title)
     (e-blog-change-content entry content)
-    (e-blog-change-labels entry labels)
-    ))
+    (e-blog-elisp-to-xml entry)
+    (e-blog-change-labels labels)))
+
+(defun e-blog-elisp-to-xml (elisp)
+  (set-buffer (get-buffer-create e-blog-tmp-buffer))
+  (erase-buffer)
+  (xml-debug-print-internal elisp " "))
 
 (defun e-blog-extract-for-edit ()
   (interactive)
@@ -314,7 +327,7 @@ paragraph with `</p>'."
 	  l-string "Labels (separated by commas): \n"
 	  p-string "-------- Post Follows This Line -------- \n"
 	  all (list u-string t-string l-string p-string)
-	  faces '(dired-warning info-menu-star custom-state info-xref-visited)
+	  faces '(e-blog-url e-blog-title e-blog-label e-blog-post)
 	  counter 0)
     (insert u-string t-string l-string p-string)
     (goto-char (point-min))
@@ -420,35 +433,32 @@ paragraph with `</p>'."
 (defun e-blog-change-title (entry title)
   (setcar (xml-node-children
 	   (xml-node-name
-	    (xml-get-children
-	     (xml-node-name entry)
-	     'title))) title))
+	    (xml-get-children entry 'title)))
+	  title))
 
 (defun e-blog-change-content (entry content)
   (setcar (xml-node-children
 	   (xml-node-name
-	    (xml-get-children
-	     (xml-node-name entry)
-	     'content))) content))
+	    (xml-get-children entry 'content)))
+	  content))
 
-(defun e-blog-change-labels (entry labels)
-  "This doesn't work yet."
-  (let (new-node tmp-label)
-    (setq new-node ())
-    (dolist (label labels)
-      (setq tmp-label '(category ((scheme . "http://www.blogger.com/atom/ns#") (term . label))))
-      (setcdr
-       (nth 1
-	    (nth 0
-		 (cdr tmp-label))) label))
-    (add-to-list 'new-node tmp-label)
-    (setq number-old-labels (length
-			     (xml-get-children
-			      (xml-node-name entry) 'category)))
-    (setcdr (xml-get-children
-	     (xml-node-name entry)
-	     'category)
-	    new-node)
-    (setcar (xml-get-children
-	     (xml-node-name entry)
-	     'category) nil)))
+(defun e-blog-change-labels (labels)
+  (let (beg node-name)
+    (setq node-name "<category scheme=\"http://www.blogger.com/atom/ns#\" term=\"")
+    (set-buffer e-blog-tmp-buffer)
+    (goto-char (point-min))
+    (while (search-forward node-name nil t)
+      (move-beginning-of-line 1)
+      (setq beg (point))
+      (move-end-of-line 1)
+    (delete-region beg (point))
+    (delete-blank-lines))
+    (goto-char (point-min))
+    (search-forward "</updated>")
+    (insert "\n")
+    (if (equal (nth 0 labels) "")
+	()
+      (dolist (label labels)
+	(insert "  " node-name label "\">\n")))
+    (delete-blank-lines)))
+    
