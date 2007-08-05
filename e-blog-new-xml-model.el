@@ -1,9 +1,38 @@
+;;; e-blog.el --- a GNU Emacs interface to Blogger
+;; Copyright (C)  2007 Mikey Coulson
+;; Author: Mikey Coulson <miketcoulson@gmail.com>
+
+;; This file is not part of GNU Emacs.
+
+;; e-blog is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published
+;; by the Free Software Foundation; either version 2, or (at your
+;; option) any later version.
+
+;; e-blog is distributed in the hope that it will be useful, but
+;; WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+;; General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with e-blog; see the file COPYING.  If not, write to the
+;; Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+;; Boston, MA 02110-1301, USA.
+
 (defvar e-blog-display-url nil
   "If non-nil, e-blog will display the post/edit url in post/edit
 buffers.")
-
+(defvar e-blog-link-region-key "\C-ch"
+  "Default keybinding for inserting links in posts.")
+(defvar e-blog-tt-region-key "\C-ct"
+  "Default keybinding for inserting `tt' style tags.")
+(defvar e-blog-emphasize-region-key "\C-ci"
+  "Default keybinding for inserting `em' style tags.")
+(defvar e-blog-strong-region-key "\C-cs"
+  "Default keybinding for inserting `strong' style tags.")
+  
 (setq e-blog-name "eblog"
-      e-blog-version "0.4"
+      e-blog-version "0.5"
       e-blog-service "blogger"
       e-blog-fetch-authinfo-url "https://www.google.com/accounts/ClientLogin"
       e-blog-fetch-bloglist-url "http://www.blogger.com/feeds/default/blogs"
@@ -222,7 +251,9 @@ Perhaps you mistyped your username or password."))))
 	()
       (narrow-to-region (point) (point-max)))
     (move-end-of-line 1)
+;;    (local-set-key e-blog-insert-link-key 'e-blog-link-region)
     (local-set-key "\C-c\C-c" 'e-blog-extract-for-post)
+    (e-blog-set-keybindings)
     (switch-to-buffer e-blog-post-buffer)))
     
 (defun e-blog-post (prop-list)
@@ -293,6 +324,8 @@ Perhaps you mistyped your username or password."))))
       ()
     (narrow-to-region beg-narrow (point-max)))
   (local-set-key "\C-c\C-c" 'e-blog-extract-for-edit)
+;;  (local-set-key e-blog-insert-link-key 'e-blog-link-region)
+  (e-blog-set-keybindings)
   (switch-to-buffer (concat e-blog-edit-buffer title "*"))))
 
 (defun e-blog-extract-common ()
@@ -601,7 +634,56 @@ paragraph with `</p>'."
       (dolist (label labels)
 	(insert "  " node-name label "'/>\n")))
     (delete-blank-lines)))
-    
+
+(defun e-blog-link-region (mk pt addr)
+  (interactive "r\nshttp://")
+  (let (link-text)
+    (setq link-text (buffer-substring mk pt))
+    (delete-region mk pt)
+    (goto-char mk)
+    (insert "<a href=\"http://" addr "\">" link-text "</a>")))
+
+(defun e-blog-tt-region (mk pt)
+  (interactive "r")
+  (let (tt-text)
+    (setq tt-text (buffer-substring mk pt))
+    (delete-region mk pt)
+    (goto-char mk)
+    (insert "<tt>" tt-text "</tt>")))
+
+(defun e-blog-emphasize-region (mk pt)
+  (interactive "r")
+  (let (em-text)
+    (setq em-text (buffer-substring mk pt))
+    (delete-region mk pt)
+    (goto-char mk)
+    (insert "<em>" em-text "</em>")))
+
+(defun e-blog-strong-region (mk pt)
+  (interactive "r")
+  (let (strong-text)
+    (setq strong-text (buffer-substring mk pt))
+    (delete-region mk pt)
+    (goto-char mk)
+    (insert "<strong>" strong-text "</strong>")))
+
+(defun e-blog-set-keybindings ()
+  (let (bindlist defunlist counter)
+    (setq bindlist
+	  (list e-blog-link-region-key
+		e-blog-tt-region-key
+		e-blog-emphasize-region-key
+		e-blog-strong-region-key)
+	  defunlist
+	  '(e-blog-link-region
+	    e-blog-tt-region
+	    e-blog-emphasize-region
+	    e-blog-strong-region)
+	  counter 0)
+    (dolist (binding bindlist)
+      (local-set-key binding (nth counter defunlist))
+      (setq counter (+ counter 1)))))
+      
 (setq e-blog-post-xml 
 "<entry xmlns='http://www.w3.org/2005/Atom'>
   <title type='text'><!-- @@@Title@@@ --></title>
