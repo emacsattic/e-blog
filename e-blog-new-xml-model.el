@@ -87,37 +87,40 @@ Perhaps you mistyped your username or password."))))
   (forward-button 1 t))
 
 (defun e-blog-setup-choose-buffer (feed)
-  (set-buffer (get-buffer-create e-blog-choose-buffer))
-  (erase-buffer)
-  (insert-string
-   (format "%d blogs found for %s:\n\n"
-	   (length (e-blog-get-titles feed)) e-blog-user))
-  (dolist (title (e-blog-get-titles feed))
-    (insert-string "\t")
-    (insert-text-button
-     "+"
-     'action 'e-blog-list-posts
-     'face 'e-blog-label
-     'title title
-     'feed feed)
-    (insert " ")
-    (insert-text-button
-     title
-     'action 'e-blog-set-post-blog
-     'face 'e-blog-blog)
-    (insert-string "\n"))
-  (insert-string "\nSelect which blog you would like to post to.")
-  (local-set-key "\t" 'e-blog-forward-button)
-  (local-set-key "q" 'e-blog-kill-current-buffer)
-  (goto-char (point-min))
-  (switch-to-buffer e-blog-choose-buffer))
+  (let (url)
+    (set-buffer (get-buffer-create e-blog-choose-buffer))
+    (erase-buffer)
+    (insert-string
+     (format "%d blogs found for %s:\n\n"
+	     (length (e-blog-get-titles feed)) e-blog-user))
+    (dolist (title (e-blog-get-titles feed))
+      (insert-string "\t")
+      (insert-text-button
+       "+"
+       'action 'e-blog-list-posts
+       'face 'e-blog-label
+       'title title
+       'feed feed)
+      (insert " ")
+      (setq url (e-blog-get-post-url title feed))
+      (insert-text-button
+       title
+       'action 'e-blog-setup-post-buffer
+       'face 'e-blog-blog
+       'url url)
+      (insert-string "\n"))
+    (insert-string "\nSelect which blog you would like to post to.")
+    (local-set-key "\t" 'e-blog-forward-button)
+    (local-set-key "q" 'e-blog-kill-current-buffer)
+    (goto-char (point-min))
+    (switch-to-buffer e-blog-choose-buffer)))
 
 (defun e-blog-fetch-blog-feed (url)
   (let (string)
     (save-excursion
       (set-buffer (get-buffer-create e-blog-tmp-buffer))
       (erase-buffer)
-      (message "Requesting a list of posts...")
+      (message "Requesting feed...")
       (call-process "curl" nil e-blog-tmp-buffer nil
 		    "--stderr" "/dev/null"
 		    "--header"
@@ -131,15 +134,37 @@ Perhaps you mistyped your username or password."))))
   (save-excursion
     (delete-char 1)
     (insert-text-button "+"
-			'action 'e-blog-expand-post-list
-			'face 'custom-state)))
+			'action 'e-blog-expand-list
+			'face 'e-blog-label)))
 
 (defun e-blog-collapsed-to-expanded ()
   (save-excursion
     (delete-char 1)
     (insert-text-button "-"
-			'action 'e-blog-collapse-post-list
-			'face 'custom-state)))
+			'action 'e-blog-collapse-list
+			'face 'e-blog-label)))
+
+(defun e-blog-collapse-list (button)
+  (save-excursion
+    (let (beg button-pos collapsed)
+      (setq button-pos (point))
+      (forward-line 1)
+      (setq beg (point))
+      (search-forward "[X]\n\n")
+      (setq collapsed (buffer-substring beg (point)))
+      (delete-region beg (point))
+      (goto-char button-pos)
+      (delete-char 1)
+      (insert-text-button "+"
+			  'action 'e-blog-expand-list
+			  'face 'e-blog-label
+			  'collapsed collapsed))))
+
+(defun e-blog-expand-list (button)
+  (save-excursion
+    (move-end-of-line 1)
+    (insert "\n" (button-get button 'collapsed)))
+  (e-blog-collapsed-to-expanded))
 
 (defun e-blog-list-posts (button)
   (let (blog-title user-feed blog-feed xml current-entry)
@@ -185,6 +210,67 @@ Perhaps you mistyped your username or password."))))
 	  (insert ", ")
 	()))))
 
+(defun e-blog-setup-post-buffer (button)
+  (let (url)
+    (setq url (button-get button 'url))
+    (set-buffer (get-buffer-create e-blog-post-buffer))
+    (e-blog-setup-common)
+    (goto-char (point-min))
+    (search-forward ": ")
+    (insert url)
+    (forward-char 1)
+    (if e-blog-display-url
+	()
+      (narrow-to-region (point) (point-max)))
+    (move-end-of-line 1)
+    (local-set-key "\C-c\C-c" 'e-blog-extract-for-post)
+    (switch-to-buffer e-blog-post-buffer)))
+    
+(defun e-blog-post (prop-list)
+  (let (title content labels url rlist slist counter node-name)
+    (kill-buffer (current-buffer))
+    (setq title (nth 0 prop-list)
+	  content (nth 1 prop-list)
+	  labels (nth 2 prop-list)
+	  url (nth 3 prop-list)
+	  node-name "<category scheme=\"http://www.blogger.com/atom/ns#\" term=\"")
+    (set-buffer (get-buffer-create e-blog-tmp-buffer))
+    (erase-buffer)
+    (insert e-blog-post-xml)
+    (goto-char (point-min))
+    (setq rlist '("<!-- @@@Title@@@ -->"
+		  "<!-- @@@Text@@@ -->"
+		  "<!-- @@@User Name@@@ -->"
+		  "<!-- @@@email@@@ -->"))
+    (setq slist (list title
+		      content
+		      user-full-name
+		      e-blog-user))
+    (setq counter 0)
+    (dolist (repl rlist)
+      (search-forward repl nil t)
+      (replace-match (nth counter slist))
+      (setq counter (+ counter 1)))
+    (goto-char (point-min))
+    (search-forward "</title>")
+    (insert "\n")
+    (if (equal (nth 0 labels) "")
+	()
+      (dolist (label labels)
+	(insert "  " node-name label "\"/>\n")))
+    (delete-blank-lines)
+    (set-visited-file-name "/tmp/e-blog-tmp")
+    (save-buffer)
+    (message "Sending Post...")
+    (call-process "curl" nil e-blog-buffer nil
+		  "-v" "--header"
+		  e-blog-auth
+		  "--header" "Content-Type: application/atom+xml"
+		  "-d" "@/tmp/e-blog-tmp"
+		  url)
+    (e-blog-cleanup)
+    (message "Sending Post... Done.")))
+      
 (defun e-blog-setup-edit-buffer (title labels content edit-url)
   (let (beg-narrow beg-content)
   (set-buffer (get-buffer-create
@@ -250,30 +336,62 @@ paragraph with `</p>'."
 
 (defun e-blog-post-edit (prop-list)
   (let (title content labels url entry)
+    (kill-buffer (current-buffer))
     (setq title (nth 0 prop-list)
 	  content (nth 1 prop-list)
 	  labels (nth 2 prop-list)
 	  url (nth 3 prop-list))
-    (message "%s, %s." title url)
     (setq entry
 	 (xml-node-name (e-blog-parse-xml
 	   (e-blog-fetch-blog-feed url))))
-
     (e-blog-change-title entry title)
     (e-blog-change-content entry content)
     (e-blog-elisp-to-xml entry)
-    (e-blog-change-labels labels)))
+    ;; The rest of this function is performed in `e-blog-tmp-buffer'
+    ;; since the `e-blog-elisp-to-xml' did a `set-buffer'.
+    (e-blog-change-labels labels)
+    (set-visited-file-name "/tmp/e-blog-tmp")
+    (save-buffer)
+    (message "Sending request for edit...")
+    (call-process "curl" nil e-blog-buffer nil
+		  "--header"
+		  e-blog-auth
+		  "--header" "Content-Type: application/atom+xml"
+		  "-X" "PUT" "-d" "@/tmp/e-blog-tmp"
+		  url)
+    (e-blog-cleanup)
+    (message "Sending request for edit... Done." )))
+
+(defun e-blog-cleanup ()
+  (delete-file "/tmp/e-blog-tmp")
+  (kill-buffer e-blog-choose-buffer)
+  (kill-buffer "e-blog-tmp"))
 
 (defun e-blog-elisp-to-xml (elisp)
   (set-buffer (get-buffer-create e-blog-tmp-buffer))
   (erase-buffer)
-  (xml-debug-print-internal elisp " "))
+  (xml-debug-print-internal elisp " ")
+  (goto-char (point-min))
+  (search-forward "<content type=\"html\">")
+  (replace-match "<content type='xhtml'>")
+  (insert "<div xmlns=\"http://www.w3.org/1999/xhtml\">")
+  (search-forward "</content>")
+  (search-backward "</content>")
+  (insert "</div>")
+  (goto-char (point-min))
+  (while (search-forward "&" nil t)
+    (replace-match "&amp;"))
+  (goto-char (point-min))
+  (while (search-forward "\"" nil t)
+    (replace-match "'")))
+
 
 (defun e-blog-extract-for-edit ()
   (interactive)
   (e-blog-post-edit (e-blog-extract-common)))
 
 (defun e-blog-extract-for-post ()
+  (interactive)
   (e-blog-post (e-blog-extract-common)))
 
 (defun e-blog-extract-labels ()
@@ -324,7 +442,7 @@ paragraph with `</p>'."
   (let (u-string t-string l-string p-string all faces cur-face counter)
     (setq u-string "Url: \n"
 	  t-string "Title: \n"
-	  l-string "Labels (separated by commas): \n"
+	  l-string "Labels: \n"
 	  p-string "-------- Post Follows This Line -------- \n"
 	  all (list u-string t-string l-string p-string)
 	  faces '(e-blog-url e-blog-title e-blog-label e-blog-post)
@@ -444,7 +562,7 @@ paragraph with `</p>'."
 
 (defun e-blog-change-labels (labels)
   (let (beg node-name)
-    (setq node-name "<category scheme=\"http://www.blogger.com/atom/ns#\" term=\"")
+    (setq node-name "<category scheme='http://www.blogger.com/atom/ns#' term='")
     (set-buffer e-blog-tmp-buffer)
     (goto-char (point-min))
     (while (search-forward node-name nil t)
@@ -459,6 +577,19 @@ paragraph with `</p>'."
     (if (equal (nth 0 labels) "")
 	()
       (dolist (label labels)
-	(insert "  " node-name label "\">\n")))
+	(insert "  " node-name label "'/>\n")))
     (delete-blank-lines)))
     
+(setq e-blog-post-xml 
+"<entry xmlns='http://www.w3.org/2005/Atom'>
+  <title type='text'><!-- @@@Title@@@ --></title>
+  <content type='xhtml'>
+    <div xmlns=\"http://www.w3.org/1999/xhtml\">
+      <!-- @@@Text@@@ -->
+    </div>
+  </content>
+  <author>
+    <name><!-- @@@User Name@@@ --></name>
+    <email><!-- @@@email@@@ --></email>
+  </author>
+</entry>")
