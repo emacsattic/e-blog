@@ -1,5 +1,3 @@
-(require 'xml)
-
 (defvar e-blog-display-url nil
   "If non-nil, e-blog will display the post/edit url in post/edit
 buffers.")
@@ -41,6 +39,7 @@ communication with the Gdata API."
 	  service (concat "service=" e-blog-service)
 	  all (concat switch user ampersand pass ampersand
 		      source ampersand service))
+    (message "Sending authorization request...")
     (call-process "curl" nil e-blog-buffer nil
 		  "--stderr" "/dev/null"
 		  all e-blog-fetch-authinfo-url)))
@@ -260,6 +259,7 @@ Perhaps you mistyped your username or password."))))
 	(insert "  " node-name label "\"/>\n")))
     (delete-blank-lines)
     (set-visited-file-name "/tmp/e-blog-tmp")
+    (setq buffer-file-coding-system 'utf-8)
     (save-buffer)
     (message "Sending Post...")
     (call-process "curl" nil e-blog-buffer nil
@@ -351,6 +351,7 @@ paragraph with `</p>'."
     ;; since the `e-blog-elisp-to-xml' did a `set-buffer'.
     (e-blog-change-labels labels)
     (set-visited-file-name "/tmp/e-blog-tmp")
+    (setq buffer-file-coding-system 'utf-8)
     (save-buffer)
     (message "Sending request for edit...")
     (call-process "curl" nil e-blog-buffer nil
@@ -361,6 +362,27 @@ paragraph with `</p>'."
 		  url)
     (e-blog-cleanup)
     (message "Sending request for edit... Done." )))
+
+(defun e-blog-confirm-delete (button)
+  (if (y-or-n-p "Are you sure you want to delete this post? ")
+      (e-blog-delete-post button)
+    (message "Post not deleted.")))
+
+(defun e-blog-delete-post (button)
+  (let (entry url)
+    (setq entry (button-get button 'entry)
+	  url (e-blog-get-edit-url entry))
+    (message "Sending request to delete post...")
+    (call-process "curl" nil e-blog-buffer nil
+		  "--header" 
+		  e-blog-auth
+		  "-X" "DELETE"
+		  url)
+    (move-beginning-of-line nil)
+    (setq beg (point))
+    (move-end-of-line nil)
+    (delete-region beg (+ (point) 1))
+    (message "Sending request to delete post... Done.")))
 
 (defun e-blog-cleanup ()
   (delete-file "/tmp/e-blog-tmp")
@@ -462,7 +484,7 @@ paragraph with `</p>'."
   (interactive)
   (if e-blog-auth
       (e-blog-choose)
-    (e-blog-do-auth)))
+    (progn (e-blog-do-auth) (e-blog-choose))))
 
 (defun e-blog-do-auth ()
   "Calls the functions necessary for communicating with Gdata."
