@@ -81,6 +81,8 @@ communication with the Gdata API."
 Perhaps you mistyped your username or password."))))
 
 (defun e-blog-extract-authinfo ()
+  "Extracts the authorization token returned by Blogger and saves
+it for future use."
   (set-buffer e-blog-buffer)
   (let (beg)
     (search-backward "Auth=")
@@ -93,6 +95,7 @@ Perhaps you mistyped your username or password."))))
     (erase-buffer)))
 
 (defun e-blog-fetch-bloglist ()
+  "Requests a list of blogs for `e-blog-user'."
   (let (feed)
     (set-buffer e-blog-buffer)
     (erase-buffer)
@@ -107,14 +110,18 @@ Perhaps you mistyped your username or password."))))
     feed))
 
 (defun e-blog-kill-current-buffer ()
+  "Kills the current buffer."
   (interactive)
   (kill-buffer (current-buffer)))
 
 (defun e-blog-forward-button ()
+  "Moves point forward one button."
   (interactive)
   (forward-button 1 t))
 
 (defun e-blog-setup-choose-buffer (feed)
+  "Sets up the buffer that allows the user to choose which blog
+to post to and optionally to list posts for each blog."
   (let (url)
     (set-buffer (get-buffer-create e-blog-choose-buffer))
     (erase-buffer)
@@ -144,6 +151,7 @@ Perhaps you mistyped your username or password."))))
     (switch-to-buffer e-blog-choose-buffer)))
 
 (defun e-blog-fetch-blog-feed (url)
+  "Requests a feed from Blogger given a URL."
   (let (string)
     (save-excursion
       (set-buffer (get-buffer-create e-blog-tmp-buffer))
@@ -159,6 +167,8 @@ Perhaps you mistyped your username or password."))))
     string))
 
 (defun e-blog-expanded-to-collapsed ()
+  "Changes the button at point to a `+' that will expand the list
+that was collapsed."
   (save-excursion
     (delete-char 1)
     (insert-text-button "+"
@@ -166,6 +176,8 @@ Perhaps you mistyped your username or password."))))
 			'face 'e-blog-label)))
 
 (defun e-blog-collapsed-to-expanded ()
+  "Changes the button at point to a `-' that will collapse the
+list that was expanded."
   (save-excursion
     (delete-char 1)
     (insert-text-button "-"
@@ -173,6 +185,7 @@ Perhaps you mistyped your username or password."))))
 			'face 'e-blog-label)))
 
 (defun e-blog-collapse-list (button)
+  "Collapses a list of posts and saves it for expanding later."
   (save-excursion
     (let (beg button-pos collapsed)
       (setq button-pos (point))
@@ -189,12 +202,15 @@ Perhaps you mistyped your username or password."))))
 			  'collapsed collapsed))))
 
 (defun e-blog-expand-list (button)
+  "Restores a collapsed list of posts."
   (save-excursion
     (move-end-of-line 1)
     (insert "\n" (button-get button 'collapsed)))
   (e-blog-collapsed-to-expanded))
 
 (defun e-blog-list-posts (button)
+  "Asks Blogger for a list of posts for a single blog and creates
+a list of buttons representing those posts."
   (let (blog-title user-feed blog-feed xml current-entry)
     (setq blog-title (button-get button 'title)
 	  user-feed (button-get button 'feed))
@@ -222,12 +238,14 @@ Perhaps you mistyped your username or password."))))
   (e-blog-collapsed-to-expanded))
 
 (defun e-blog-get-edit-url (entry)
+  "Given an entry, returns an edit url."
   (let (edit-url)
     (setq edit-url
 	  (nth 1 (assoc "edit" (e-blog-get-links entry))))
     edit-url))
 
 (defun e-blog-insert-labels (labels)
+  "Inserts labels, if any, to the edit buffer."
   (let (num-labels counter)
     (setq counter (length labels)
 	  num-labels counter)
@@ -239,6 +257,7 @@ Perhaps you mistyped your username or password."))))
 	()))))
 
 (defun e-blog-setup-post-buffer (button)
+  "Sets up a buffer for writing a new post."
   (let (url)
     (setq url (button-get button 'url))
     (set-buffer (get-buffer-create e-blog-post-buffer))
@@ -251,12 +270,12 @@ Perhaps you mistyped your username or password."))))
 	()
       (narrow-to-region (point) (point-max)))
     (move-end-of-line 1)
-;;    (local-set-key e-blog-insert-link-key 'e-blog-link-region)
     (local-set-key "\C-c\C-c" 'e-blog-extract-for-post)
     (e-blog-set-keybindings)
     (switch-to-buffer e-blog-post-buffer)))
     
 (defun e-blog-post (prop-list)
+  "Requests adding a post to a blog."
   (let (title content labels url rlist slist counter node-name)
     (kill-buffer (current-buffer))
     (setq title (nth 0 prop-list)
@@ -303,6 +322,7 @@ Perhaps you mistyped your username or password."))))
     (message "Sending Post... Done.")))
       
 (defun e-blog-setup-edit-buffer (title labels content edit-url)
+  "Sets up a buffer for editing a post."
   (let (beg-narrow beg-content)
   (set-buffer (get-buffer-create
 	       (concat e-blog-edit-buffer title "*")))
@@ -329,6 +349,8 @@ Perhaps you mistyped your username or password."))))
   (switch-to-buffer (concat e-blog-edit-buffer title "*"))))
 
 (defun e-blog-extract-common ()
+  "Extracts the title, labels, content, and post/edit url from
+the post/edit buffer."
   (let (beg title content labels url post-info)
     (widen)
     (goto-char (point-min))
@@ -350,8 +372,8 @@ Perhaps you mistyped your username or password."))))
     post-info))
 
 (defun e-blog-do-markups ()
-  "Prepends `<p>' to the beginning of each paragraph.  Ends each
-paragraph with `</p>'."
+  "Does very simple marking up to make content suitable for XML
+encapsulation."
   (interactive)
   (let (replacements beg-text)
     (setq replacements
@@ -368,6 +390,7 @@ paragraph with `</p>'."
     (insert-string "</p>")))
 
 (defun e-blog-post-edit (prop-list)
+  "Requests editing of an existing entry on a blog."
   (let (title content labels url entry)
     (kill-buffer (current-buffer))
     (setq title (nth 0 prop-list)
@@ -397,11 +420,13 @@ paragraph with `</p>'."
     (message "Sending request for edit... Done." )))
 
 (defun e-blog-confirm-delete (button)
+  "Asks for confirmation before deleting a post."
   (if (y-or-n-p "Are you sure you want to delete this post? ")
       (e-blog-delete-post button)
     (message "Post not deleted.")))
 
 (defun e-blog-delete-post (button)
+  "Requests deletion of a post."
   (let (entry url)
     (setq entry (button-get button 'entry)
 	  url (e-blog-get-edit-url entry))
@@ -418,11 +443,15 @@ paragraph with `</p>'."
     (message "Sending request to delete post... Done.")))
 
 (defun e-blog-cleanup ()
+  "Kills some unneeded buffers."
   (delete-file "/tmp/e-blog-tmp")
   (kill-buffer e-blog-choose-buffer)
   (kill-buffer "e-blog-tmp"))
 
 (defun e-blog-elisp-to-xml (elisp)
+  "Converts XML represented in elisp back to XML and does some
+encapsulation of the content to ensure suitability for Blogger
+requests."
   (set-buffer (get-buffer-create e-blog-tmp-buffer))
   (erase-buffer)
   (xml-debug-print-internal elisp " ")
@@ -440,16 +469,19 @@ paragraph with `</p>'."
   (while (search-forward "\"" nil t)
     (replace-match "'")))
 
-
 (defun e-blog-extract-for-edit ()
+  "Calls `e-blog-extract-common' for editing a post."
   (interactive)
   (e-blog-post-edit (e-blog-extract-common)))
 
 (defun e-blog-extract-for-post ()
+  "Calls `e-blog-extract-common' for posting a post."
   (interactive)
   (e-blog-post (e-blog-extract-common)))
 
 (defun e-blog-extract-labels ()
+  "Extracts comma separated list of labels from a post/edit
+buffer."
   (let (label labels beg eol)
     (setq beg (point)
 	  labels ())
@@ -464,6 +496,7 @@ paragraph with `</p>'."
     labels))
 
 (defun e-blog-do-markdowns ()
+  "Marks down retrieved content from html to text."
   (let (beg-text beg end replacements)
     (move-beginning-of-line nil)
     (setq beg-text (point))
@@ -479,12 +512,17 @@ paragraph with `</p>'."
       (goto-char beg-text)
       (while (search-forward (car list) nil t)
 	(replace-match (nth 1 list))))
+    (goto-char beg-text)
+    (re-search-forward " *")
+    (delete-region beg-text (point))
     (goto-char (point-max))
     (forward-line -2)
     (move-end-of-line nil)
     (delete-region (point) (point-max))))
 
 (defun e-blog-edit-post (button)
+  "Calls necessary functionf for preparing an edit for a Blogger
+request."
   (let (entry)
     (setq entry (button-get button 'entry))
     (e-blog-setup-edit-buffer
@@ -494,6 +532,7 @@ paragraph with `</p>'."
      (e-blog-get-edit-url entry))))
 
 (defun e-blog-setup-common ()
+  "Does the common buffer setup for posting/editing."
   (let (u-string t-string l-string p-string all faces cur-face counter)
     (setq u-string "Url: \n"
 	  t-string "Title: \n"
@@ -526,9 +565,11 @@ paragraph with `</p>'."
       (e-blog-choose)))
 
 (defun e-blog-choose ()
+  "Called to setup a choose buffer."
   (e-blog-setup-choose-buffer (e-blog-parse-xml (e-blog-fetch-bloglist))))
 
 (defun e-blog-parse-xml (string)
+  "Parses XML to be represented in elisp."
   (let (parsed)
     (save-excursion
       (set-buffer (get-buffer-create e-blog-tmp-buffer))
@@ -538,6 +579,8 @@ paragraph with `</p>'."
       parsed)))
 
 (defun e-blog-get-titles (feed)
+  "Given a elisp representation of a FEED, returns the titles
+from that FEED."
   (let (titles)
     (setq titles ())
     (dolist (entry (e-blog-get-entries feed))
@@ -546,11 +589,15 @@ paragraph with `</p>'."
     titles))
 
 (defun e-blog-get-entries (feed)
+  "Given an elisp representation of a FEED, returns the entries
+from that FEED."
   (let (entries)
     (setq entries (xml-get-children (xml-node-name feed) 'entry))
     entries))
 
 (defun e-blog-get-title (entry)
+  "Given an  elisp representation of an ENTRY,  returns the title
+of that ENTRY."
   (let (title-tag title)
     (setq title-tag
 	  (xml-get-children entry 'title))
@@ -561,6 +608,8 @@ paragraph with `</p>'."
     title))
 
 (defun e-blog-get-post-url (title feed)
+  "Given an elisp representation of a FEED and a TITLE, returns
+the post url for that TITLE."
   (let (post-url links)
     (dolist (entry (e-blog-get-entries feed))
       (if (equal (e-blog-get-title entry) title)
@@ -570,6 +619,8 @@ paragraph with `</p>'."
     post-url))
 
 (defun e-blog-get-links (entry)
+  "Given an elisp representation of an ENTRY, returns a list of
+the links associated with that ENTRY."
   (let (links type-link)
     (dolist (link (xml-get-children entry 'link))
       (setq type-link
@@ -580,6 +631,8 @@ paragraph with `</p>'."
     links))
 
 (defun e-blog-get-entry (title feed)
+  "Given an elisp representation of a FEED and a TITLE, returns
+an elisp representation of the entry for that TITLE."
   (let (matching-entry)
   (dolist (entry (e-blog-get-entries feed))
     (if (equal (e-blog-get-title entry) title)
@@ -587,6 +640,8 @@ paragraph with `</p>'."
   matching-entry))
 
 (defun e-blog-get-labels (entry)
+  "Given an elisp representation of an ENTRY, returns a list of
+labels for that ENTRY."
   (let (post-labels)
     (setq post-labels ())
     (dolist (label (xml-get-children entry 'category))
@@ -595,6 +650,8 @@ paragraph with `</p>'."
     post-labels))
 
 (defun e-blog-get-content (entry)
+  "Given an elisp representation of an ENTRY, returns the content
+for that ENTRY."
   (let (content)
     (setq content
 	  (nth 0
@@ -604,18 +661,24 @@ paragraph with `</p>'."
     content))
 
 (defun e-blog-change-title (entry title)
+  "Given an elisp representation of an entry and a title, will
+modify the title to given title."
   (setcar (xml-node-children
 	   (xml-node-name
 	    (xml-get-children entry 'title)))
 	  title))
 
 (defun e-blog-change-content (entry content)
+  "Given an elisp representation of an ENTRY and CONTENT, will
+modify the content in ENTRY to given CONTENT."
   (setcar (xml-node-children
 	   (xml-node-name
 	    (xml-get-children entry 'content)))
 	  content))
 
 (defun e-blog-change-labels (labels)
+  "Given a list of LABELS, modifies XML to represent those LABELS
+and removes any existing labels, if applicable"
   (let (beg node-name)
     (setq node-name "<category scheme='http://www.blogger.com/atom/ns#' term='")
     (set-buffer e-blog-tmp-buffer)
