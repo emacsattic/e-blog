@@ -344,7 +344,6 @@ a list of buttons representing those posts."
       ()
     (narrow-to-region beg-narrow (point-max)))
   (local-set-key "\C-c\C-c" 'e-blog-extract-for-edit)
-;;  (local-set-key e-blog-insert-link-key 'e-blog-link-region)
   (e-blog-set-keybindings)
   (switch-to-buffer (concat e-blog-edit-buffer title "*"))))
 
