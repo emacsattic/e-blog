@@ -228,6 +228,12 @@ a list of buttons representing those posts."
 			    'face 'e-blog-url
 			    'entry current-entry)
 	(insert " [")
+	(insert-text-button "C"
+			    'action 'e-blog-fetch-comments
+			    'face 'e-blog-label
+			    'entry current-entry)
+	(insert "]")
+	(insert "[")
 	(insert-text-button "X"
 			    'action 'e-blog-confirm-delete
 			    'face 'e-blog-title
@@ -235,6 +241,17 @@ a list of buttons representing those posts."
 	(insert "]")
 	(insert "\n"))))
   (e-blog-collapsed-to-expanded))
+
+(defun e-blog-fetch-comments (button)
+  "Fetches a list of comments for a post."
+  (let (entry links url comments)
+    (setq entry (button-get button 'entry))
+    (setq links (e-blog-get-links entry))
+    (setq url (nth 1 (assoc "replies" links)))
+    (setq comments
+	  (xml-node-name (e-blog-parse-xml
+			  (e-blog-fetch-blog-feed url))))
+    (setq e-blog-tmp-var comments)))
 
 (defun e-blog-get-edit-url (entry)
   "Given an entry, returns an edit url."
