@@ -51,8 +51,8 @@ buffers.")
 
 (defun e-blog-get-credentials ()
   "Gets username and password via the minibuffer."
-  (setq e-blog-user (read-from-minibuffer "Username: ")
-	e-blog-passwd (read-passwd "Password: ")))
+  (unless (boundp 'e-blog-user) (setq e-blog-user (read-from-minibuffer "Username: ")))
+  (unless (boundp 'e-blog-passwd) (setq e-blog-passwd (read-passwd "Password: "))))
 
 (defun e-blog-fetch-auth ()
   "Calls curl to request an authorization string for further
