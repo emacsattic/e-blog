@@ -22,7 +22,9 @@
   "If non-nil, e-blog will display the post/edit url in post/edit
 buffers.")
 (defvar e-blog-link-region-key "\C-ch"
-  "Default keybinding for inserting links in posts.")
+  "Default keybinding for inserting http links in posts.")
+(defvar e-blog-no-protocol-link-region-key "\C-cl"
+  "Default keybinding for inserting non http links in posts.")
 (defvar e-blog-tt-region-key "\C-ct"
   "Default keybinding for inserting `tt' style tags.")
 (defvar e-blog-emphasize-region-key "\C-ci"
@@ -721,6 +723,15 @@ and removes any existing labels, if applicable"
     (goto-char mk)
     (insert "<a href=\"http://" addr "\">" link-text "</a>")))
 
+(defun e-blog-no-protocol-link-region (mk pt addr)
+  (interactive "r\nsLink (including protocol): ")
+  (let (link-text)
+    (setq link-text (buffer-substring mk pt))
+    (delete-region mk pt)
+    (goto-char mk)
+    (insert "<a href=\"" addr "\">" link-text "</a>")))
+
+
 (defun e-blog-tt-region (mk pt)
   (interactive "r")
   (let (tt-text)
@@ -749,11 +760,13 @@ and removes any existing labels, if applicable"
   (let (bindlist defunlist counter)
     (setq bindlist
 	  (list e-blog-link-region-key
+		e-blog-no-protocol-link-region-key
 		e-blog-tt-region-key
 		e-blog-emphasize-region-key
 		e-blog-strong-region-key)
 	  defunlist
 	  '(e-blog-link-region
+	    e-blog-no-protocol-link-region
 	    e-blog-tt-region
 	    e-blog-emphasize-region
 	    e-blog-strong-region)
