@@ -396,7 +396,8 @@ encapsulation."
     (setq replacements
 	  '(("\n\n" "</p><p>")
 	    ("\n" " ")
-	    ("</p><p>" "</p>\n<p>")))
+	    ("</p><p>" "</p>\n<p>")
+	    ("\\" "&#92;")))
     (setq beg-text (point))
     (insert-string "<p>")
     (dolist (list replacements)
@@ -538,7 +539,7 @@ buffer."
     (delete-region (point) (point-max))))
 
 (defun e-blog-edit-post (button)
-  "Calls necessary functionf for preparing an edit for a Blogger
+  "Calls necessary functions for preparing an edit for a Blogger
 request."
   (let (entry)
     (setq entry (button-get button 'entry))
